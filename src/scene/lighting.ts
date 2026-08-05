@@ -25,6 +25,9 @@ const SUN_DIRECTION = new THREE.Vector3(0.55, 0.72, 0.42).normalize();
 
 const tmpTarget = new THREE.Vector3();
 const tmpForward = new THREE.Vector3();
+const tmpLightMatrix = new THREE.Matrix4();
+const tmpLightInverse = new THREE.Matrix4();
+const ORIGIN = new THREE.Vector3();
 
 /**
  * Lighting and atmosphere for flat-shaded low-poly geometry.
@@ -60,12 +63,16 @@ export function setupLighting(
   sun.position.copy(SUN_DIRECTION).multiplyScalar(1000);
   sun.castShadow = true;
   sun.shadow.mapSize.set(mapSize, mapSize);
-  // Normal bias rather than a large constant bias. Peter-panning is very
-  // visible on a city of boxes — the shadow detaches from the wall casting it —
-  // whereas offsetting along the surface normal scales with the geometry and
-  // keeps contact shadows attached.
+  // Normal bias only; constant bias stays at zero.
+  //
+  // `shadow.bias` is normalised over the shadow camera's depth range, and this
+  // camera's far plane is thousands of metres out, so even -0.0005 works out to
+  // metres of depth offset — enough to leave whole facades marginally in or out
+  // of shadow and flipping between the two. `normalBias` is in world units
+  // instead, so it stays a fixed physical nudge (about one shadow texel here)
+  // no matter how the camera is fitted.
   sun.shadow.normalBias = 0.6;
-  sun.shadow.bias = -0.0005;
+  sun.shadow.bias = 0;
   scene.add(sun);
   scene.add(sun.target);
 
@@ -79,8 +86,20 @@ export function setupLighting(
 
   return {
     sun,
-    update: (camera) => fitShadowCamera(sun, camera, shadowRadius),
+    update: (camera) => fitShadowCamera(sun, camera, shadowRadius, mapSize),
   };
+}
+
+/**
+ * Round the covered radius up to a discrete step.
+ *
+ * If the radius tracked altitude continuously, every frame would rescale the
+ * shadow map and every shadow edge would crawl as you climb. Stepping means it
+ * only rescales occasionally, and between steps the projection is stable.
+ */
+function quantizeRadius(radius: number): number {
+  const step = 2 ** Math.ceil(Math.log2(radius / 64));
+  return 64 * step;
 }
 
 /**
@@ -96,9 +115,10 @@ function fitShadowCamera(
   sun: THREE.DirectionalLight,
   camera: THREE.Camera,
   baseRadius: number,
+  mapSize: number,
 ): void {
   const altitude = Math.max(camera.position.y, 1);
-  const radius = THREE.MathUtils.clamp(altitude * 1.1, baseRadius, 4000);
+  const radius = quantizeRadius(THREE.MathUtils.clamp(altitude * 1.1, baseRadius, 4000));
 
   // Bias the covered area forward — the camera usually looks ahead and down
   // rather than straight at its own feet.
@@ -108,6 +128,22 @@ function fitShadowCamera(
   else tmpForward.set(0, 0, 0);
 
   tmpTarget.set(camera.position.x + tmpForward.x, 0, camera.position.z + tmpForward.z);
+
+  // Snap the centre to whole shadow-map texels.
+  //
+  // Without this the map slides by a fraction of a texel every frame, so which
+  // texel each surface samples changes constantly and every shadow edge crawls
+  // while the camera moves — the artifact reads as shimmering along every
+  // wall. Snapping in the light's own basis makes the map move in discrete
+  // texel steps instead, so the sampling stays put between steps.
+  const texel = (2 * radius) / mapSize;
+  tmpLightMatrix.lookAt(SUN_DIRECTION, ORIGIN, THREE.Object3D.DEFAULT_UP);
+  tmpLightInverse.copy(tmpLightMatrix).invert();
+
+  tmpTarget.applyMatrix4(tmpLightInverse);
+  tmpTarget.x = Math.round(tmpTarget.x / texel) * texel;
+  tmpTarget.y = Math.round(tmpTarget.y / texel) * texel;
+  tmpTarget.applyMatrix4(tmpLightMatrix);
 
   sun.target.position.copy(tmpTarget);
   sun.target.updateMatrixWorld();

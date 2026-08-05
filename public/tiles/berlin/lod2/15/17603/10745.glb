@@ -42,12 +42,12 @@
     {
       "type": "VEC3",
       "componentType": 5126,
-      "count": 161349
+      "count": 161345
     },
     {
       "type": "VEC3",
       "componentType": 5126,
-      "count": 161349,
+      "count": 161345,
       "max": [
         375.0320129394531,
         42.75,
@@ -55,14 +55,14 @@
       ],
       "min": [
         -375.0320129394531,
-        -2.2648549702353193e-14,
+        -0.05999999865889549,
         -375.04400634765625
       ]
     },
     {
       "type": "VEC3",
       "componentType": 5126,
-      "count": 161349
+      "count": 161345
     },
     {
       "type": "SCALAR",
@@ -109,12 +109,12 @@
     {
       "buffer": 0,
       "byteOffset": 240,
-      "byteLength": 252078
+      "byteLength": 276704
     },
     {
       "buffer": 0,
-      "byteOffset": 252318,
-      "byteLength": 91516
+      "byteOffset": 276944,
+      "byteLength": 91547
     }
   ],
   "samplers": [
@@ -144,7 +144,7 @@
   "buffers": [
     {
       "uri": "10745.glb.bin",
-      "byteLength": 343834
+      "byteLength": 368491
     }
   ],
   "materials": [

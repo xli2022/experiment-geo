@@ -15,6 +15,7 @@ import { chromium } from 'playwright';
 const ALT = Number(process.env.ZF_ALT ?? 120);
 const EAST = Number(process.env.ZF_EAST ?? 0);
 const OUT = process.env.ZF_OUT ?? 'zfight.png';
+const RAW = process.env.ZF_RAW !== '0';
 
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH,
@@ -29,15 +30,29 @@ await page.waitForTimeout(35000);
 
 const shoot = async (nudge) =>
   page.evaluate(
-    ({ east, alt, nudge }) => {
+    ({ east, alt, nudge, raw }) => {
       const { viewer } = window.app;
       viewer.camera.position.set(east, alt + nudge, 140 + nudge);
       viewer.camera.lookAt(east, 0, -200);
       viewer.camera.updateMatrixWorld(true);
-      viewer.render();
+      // Strip everything view-dependent when isolating geometry.
+      //
+      // GTAO reconstructs from depth, and the shadow camera is refitted around
+      // the viewer every frame, so both respond to a sub-pixel nudge across the
+      // whole frame and swamp the depth ties this test looks for. Turning them
+      // off measures the geometry alone, which is what the baseline measured.
+      if (raw) {
+        viewer.renderer.shadowMap.enabled = false;
+        viewer.scene.traverse((o) => {
+          if (o.isMesh && o.material) o.material.needsUpdate = true;
+        });
+        viewer.renderer.render(viewer.scene, viewer.camera);
+      } else {
+        viewer.render();
+      }
       return viewer.renderer.domElement.toDataURL('image/png');
     },
-    { east: EAST, alt: ALT, nudge },
+    { east: EAST, alt: ALT, nudge, raw: RAW },
   );
 
 const a = await shoot(0);
