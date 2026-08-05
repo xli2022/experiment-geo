@@ -25,7 +25,7 @@
       ],
       "min": [
         -375.0889892578125,
-        -0.05999999865889549,
+        -0.11999999731779099,
         -375.1050109863281
       ]
     },
@@ -104,17 +104,17 @@
     {
       "buffer": 0,
       "byteOffset": 0,
-      "byteLength": 501257
+      "byteLength": 551583
     },
     {
       "buffer": 0,
-      "byteOffset": 501257,
-      "byteLength": 1829
+      "byteOffset": 551583,
+      "byteLength": 2020
     },
     {
       "buffer": 0,
-      "byteOffset": 503086,
-      "byteLength": 18909
+      "byteOffset": 553603,
+      "byteLength": 20264
     }
   ],
   "samplers": [
@@ -144,7 +144,7 @@
   "buffers": [
     {
       "uri": "10746.glb.bin",
-      "byteLength": 521995
+      "byteLength": 573867
     }
   ],
   "materials": [
