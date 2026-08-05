@@ -10,19 +10,26 @@ A city-builder look is the opposite — bright, flat, saturated, with large legi
 areas of colour. Getting there is an image problem, not a geometry one, so this
 rewrites the textures in place and leaves the meshes alone.
 
-The pipeline, in order (each step matters and the order does too):
+"Less detail" here means less *variation*, not less *sharpness*. A city-builder
+render is crisper than a photograph, not softer: large flat areas of colour
+separated by hard edges. Downscaling and blurring produce the opposite — mush —
+so the pipeline deliberately keeps full resolution and sharpens at the end.
 
-  1. downscale        less detail, and the single biggest size win
-  2. edge-preserving  median filter kills photographic grain while keeping
-     smoothing         building edges crisp — a plain blur would mush both
-  3. saturate         photogrammetry is captured flat; games are not
-  4. contrast/bright  lifts the grey cast that aerial capture leaves behind
-  5. palette quantize collapses near-identical shades into flat regions, which
-                      is what actually reads as "illustrated" rather than
-                      "photo with a filter"
+  1. bilateral filter  the load-bearing step. Averages colour only across
+                       pixels that are already similar, so it collapses roof
+                       texture and road speckle into flat areas while leaving
+                       the boundary between roof and road perfectly hard. A
+                       median or Gaussian blur softens both equally.
+  2. shadow lift       aerial shadows carry a heavy blue cast; saturating them
+                       directly turns every shaded wall electric blue
+  3. saturate/contrast photogrammetry is captured flat; games are not
+  4. palette quantize  collapses the remaining near-identical shades into
+                       genuinely flat regions
+  5. unsharp mask      restores the edge crispness that quantising softens,
+                       and pushes past the original for a poster-like look
 
-Quantising *after* smoothing is deliberate. Do it first and the filter smears
-the palette back into gradients, undoing the effect.
+Quantising after filtering is deliberate: do it first and the filter smears the
+palette straight back into gradients.
 
 Usage:
     tools/stylize-tiles.py <tiles-dir> [options]
@@ -44,9 +51,11 @@ from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 
 try:
+    import cv2
+    import numpy as np
     from PIL import Image, ImageEnhance, ImageFilter
-except ImportError:
-    sys.exit("error: Pillow is required — pip install Pillow")
+except ImportError as exc:
+    sys.exit(f"error: needs Pillow and opencv — pip install Pillow opencv-python-headless ({exc})")
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -57,14 +66,26 @@ CHUNK_BIN = 0x004E4942
 
 @dataclass(frozen=True)
 class Style:
-    scale: float = 0.5
-    smooth: int = 7
+    """
+    Defaults are what preview iteration landed on, not a first guess.
+
+    Note scale defaults to 1.0. Downscaling is tempting for the size win but it
+    is exactly the wrong lever here — it costs sharpness, which is the thing
+    that makes the style read as illustrated rather than blurred.
+    """
+
+    scale: float = 1.0
+    bilateral_d: int = 9          # neighbourhood diameter
+    bilateral_color: int = 60     # how different a colour can be and still blend
+    bilateral_space: int = 60     # how far away a pixel can be and still blend
+    bilateral_passes: int = 2     # repeat rather than widen — flatter, still sharp
     saturation: float = 1.5
-    contrast: float = 1.15
-    brightness: float = 1.06
-    colors: int = 32
+    contrast: float = 1.18
+    brightness: float = 1.04
+    colors: int = 24
     shadow_lift: float = 0.16
-    quality: int = 82
+    sharpen: float = 1.4          # unsharp amount, 0 = off
+    quality: int = 78
 
 
 def stylize_image(data: bytes, style: Style) -> bytes:
@@ -76,10 +97,18 @@ def stylize_image(data: bytes, style: Style) -> bytes:
         h = max(8, int(img.height * style.scale))
         img = img.resize((w, h), Image.LANCZOS)
 
-    if style.smooth > 1:
-        # Median rather than Gaussian: it removes speckle without softening the
-        # roof/wall boundaries that make the city readable from above.
-        img = img.filter(ImageFilter.MedianFilter(size=style.smooth | 1))
+    if style.bilateral_passes > 0 and style.bilateral_d > 0:
+        # The step that makes this work. Bilateral weights each neighbour by
+        # colour distance as well as spatial distance, so a roof averages with
+        # roof and a road with road, but neither bleeds across the boundary
+        # between them. Repeated narrow passes flatten harder than one wide
+        # pass and cost less.
+        arr = cv2.cvtColor(np.asarray(img), cv2.COLOR_RGB2BGR)
+        for _ in range(style.bilateral_passes):
+            arr = cv2.bilateralFilter(
+                arr, style.bilateral_d, style.bilateral_color, style.bilateral_space
+            )
+        img = Image.fromarray(cv2.cvtColor(arr, cv2.COLOR_BGR2RGB))
 
     if style.shadow_lift > 0:
         # Aerial shadows carry a strong blue cast. Saturating them directly
@@ -103,6 +132,13 @@ def stylize_image(data: bytes, style: Style) -> bytes:
         # at their seams looks worse than slight per-tile drift.
         img = img.quantize(colors=style.colors, method=Image.MEDIANCUT, dither=0)
         img = img.convert("RGB")
+
+    if style.sharpen > 0:
+        # Quantising softens edges slightly; this restores them and then some.
+        # A stylised city should read crisper than the photograph it came from.
+        img = img.filter(
+            ImageFilter.UnsharpMask(radius=2, percent=int(style.sharpen * 100), threshold=3)
+        )
 
     out = io.BytesIO()
     img.save(out, "JPEG", quality=style.quality, optimize=True, subsampling=1)
@@ -220,7 +256,11 @@ def main() -> int:
     ap.add_argument("tiles_dir")
     ap.add_argument("--preview", metavar="PNG", help="write a before/after strip and exit")
     ap.add_argument("--scale", type=float, default=Style.scale)
-    ap.add_argument("--smooth", type=int, default=Style.smooth, help="median radius, 1 = off")
+    ap.add_argument("--bilateral-d", type=int, default=Style.bilateral_d)
+    ap.add_argument("--bilateral-color", type=int, default=Style.bilateral_color)
+    ap.add_argument("--bilateral-space", type=int, default=Style.bilateral_space)
+    ap.add_argument("--bilateral-passes", type=int, default=Style.bilateral_passes, help="0 = off")
+    ap.add_argument("--sharpen", type=float, default=Style.sharpen, help="unsharp amount, 0 = off")
     ap.add_argument("--saturation", type=float, default=Style.saturation)
     ap.add_argument("--contrast", type=float, default=Style.contrast)
     ap.add_argument("--brightness", type=float, default=Style.brightness)
@@ -237,7 +277,11 @@ def main() -> int:
 
     style = Style(
         scale=args.scale,
-        smooth=args.smooth,
+        bilateral_d=args.bilateral_d,
+        bilateral_color=args.bilateral_color,
+        bilateral_space=args.bilateral_space,
+        bilateral_passes=args.bilateral_passes,
+        sharpen=args.sharpen,
         saturation=args.saturation,
         contrast=args.contrast,
         brightness=args.brightness,

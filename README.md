@@ -102,17 +102,27 @@ tools/stylize-tiles.py public/tiles/berlin3d --preview /tmp/look.png  # tune fir
 tools/stylize-tiles.py public/tiles/berlin3d                          # then commit to it
 ```
 
-Order matters. Downscale, then median filter (not blur — it has to keep building edges
-while killing grain), then **lift the shadows**, then saturate, then palette-quantize.
+**"Less detail" means less variation, not less sharpness.** A city-builder render is
+*crisper* than a photograph — large flat areas of colour separated by hard edges.
+Downscaling and blurring produce the opposite, so the pipeline keeps full resolution and
+sharpens at the end:
 
-The shadow lift is the step that is not obvious. Aerial shadows carry a strong blue cast,
-so saturating them directly turns every shaded wall electric blue — it reads as broken
-rather than stylized. Lifting the toe of the curve first lets the saturation act on
-midtones instead. Quantizing last matters too: do it before the filter and the smoothing
-smears the palette straight back into gradients.
+1. **Bilateral filter** — the load-bearing step. It weights neighbours by colour distance
+   as well as position, so roof averages with roof and road with road, but neither bleeds
+   across the boundary between them. A median or Gaussian blur softens both equally, which
+   is exactly the mush to avoid.
+2. **Lift the shadows** — aerial shadows carry a heavy blue cast, and saturating them
+   directly turns every shaded wall electric blue. It reads as broken, not stylized.
+3. Saturate and add contrast.
+4. **Palette-quantize** — after filtering, never before; do it first and the filter smears
+   the palette straight back into gradients.
+5. **Unsharp mask** — restores the crispness quantizing softens, and pushes past the
+   original.
 
-Side effect worth having: **162 MB → 103 MB**, since the textures shrink along with the
-detail.
+Cost: **162 MB → 191 MB**. Sharpening is expensive in JPEG — the edge halos are exactly
+what the codec is worst at — so the quality default is 78 rather than the 88 the look
+would otherwise want. Downscaling would claw all of it back and more, but it is the one
+lever that directly destroys the effect.
 
 ### The OSM route, and why it was abandoned
 
