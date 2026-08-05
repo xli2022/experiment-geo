@@ -44,10 +44,27 @@ BEFORE=$(du -sb "$TILES_DIR" | cut -f1)
 echo "Optimizing ${#GLBS[@]} tiles in $TILES_DIR ($(du -sh "$TILES_DIR" | cut -f1))"
 
 START=$(date +%s)
+# Compression is split into two commands rather than left to `optimize`,
+# because `optimize` gives no way to set the quantization grid and its default
+# destroys the ground-layer offsets.
+#
+# Draco quantizes positions onto a *uniform* grid sized by the mesh's largest
+# extent, so a 750 m wide tile at the default 14 bits lands every axis —
+# including height — on a 45.8 mm grid (measured, not inferred). The layer
+# separations from tools/offset-ground.py are centimetres, so everything under
+# half a step snapped straight back to a shared height and the coplanar
+# z-fighting came back after compression even though the offsets were applied
+# correctly. 16 bits gives ~11.4 mm, which the separations clear comfortably.
+QUANTIZE_POSITION="${QUANTIZE_POSITION:-16}"
+
 for glb in "${GLBS[@]}"; do
   tmp="$glb.opt"
-  if npx --yes @gltf-transform/cli optimize "$glb" "$tmp" \
-       --compress draco --texture-compress webp $SIMPLIFY_FLAG >/dev/null 2>&1; then
+  pre="$glb.pre"
+  if npx --yes @gltf-transform/cli optimize "$glb" "$pre" \
+       --compress false --texture-compress webp $SIMPLIFY_FLAG >/dev/null 2>&1 \
+     && npx --yes @gltf-transform/cli draco "$pre" "$tmp" \
+       --quantize-position "$QUANTIZE_POSITION" >/dev/null 2>&1; then
+    rm -f "$pre"
     mv "$tmp" "$glb"
     printf '.'
   else

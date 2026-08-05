@@ -44,32 +44,39 @@ import sys
 
 import numpy as np
 
-# Palette colour -> metres of vertical offset. Ordered as a street is built up:
-# ground below, then made surfaces, then the paint on top of them.
+# Palette colour -> metres of vertical offset, ordered the way a street is
+# actually built: ground below, made surfaces above it, paint on top of those,
+# and the pavement raised over the carriageway as a real kerb would be.
 #
-# Keep the total spread small. These are decals, not steps — 8 cm across the
-# whole stack is invisible in flight but is orders of magnitude more depth
-# separation than the buffer needs to pick a winner.
+# The 3 cm step is set by the compressor, not by taste. Draco quantizes
+# positions onto a uniform grid sized by the mesh's largest extent, so a 750 m
+# tile lands every axis on ~11.4 mm at the 16 bits tools/optimize-tiles.sh now
+# requests. An earlier version of this table used 5–20 mm steps against Draco's
+# *default* 14 bits, which is a 45.8 mm grid — every separation below half a
+# step collapsed back to a shared height during compression, so the offsets
+# were applied correctly and then silently undone. Keep the smallest gap here
+# at least twice the grid.
 LAYERS = {
-    "#a9bd8d": -0.060,  # TERRAIN_DEFAULT — the sheet everything else sits on
-    "#8fb573": -0.050,  # GRASS
-    "#7fa365": -0.050,  # SCRUB
-    "#6f9457": -0.050,  # HEDGE
-    "#a68f6d": -0.045,  # EARTH
-    "#dcc9a0": -0.045,  # SAND
-    "#9c968c": -0.040,  # RAIL_BALLAST
-    "#8a8580": -0.035,  # RAILWAY
-    "#b2aca2": -0.030,  # GRAVEL
-    "#aaa49a": -0.030,  # SCREE
-    "#b7b1a7": -0.030,  # PEBBLESTONE
-    "#c7c2b8": -0.020,  # CONCRETE
-    "#c0bab0": -0.020,  # PAVING_STONE
-    "#b4aea4": -0.020,  # SETT
-    "#aca69c": -0.020,  # UNHEWN_COBBLESTONE
-    "#c8c3ba": -0.015,  # KERB
+    "#a9bd8d": -0.12,  # TERRAIN_DEFAULT — the sheet everything else sits on
+    "#8fb573": -0.09,  # GRASS
+    "#7fa365": -0.09,  # SCRUB
+    "#6f9457": -0.09,  # HEDGE
+    "#a68f6d": -0.09,  # EARTH
+    "#dcc9a0": -0.09,  # SAND
+    "#ddd3c0": -0.09,  # SHELLS
+    "#9c968c": -0.06,  # RAIL_BALLAST
+    "#8a8580": -0.06,  # RAILWAY
+    "#b2aca2": -0.06,  # GRAVEL
+    "#aaa49a": -0.06,  # SCREE
+    "#b7b1a7": -0.06,  # PEBBLESTONE
     # ASPHALT stays at 0 — it is the reference the rest are placed around.
-    "#f2f2ee": 0.015,  # ROAD_MARKING and friends, painted on top
-    "#d98a7a": 0.015,  # RED_ROAD_MARKING
+    "#f2f2ee": 0.03,  # ROAD_MARKING and friends, painted onto the carriageway
+    "#d98a7a": 0.03,  # RED_ROAD_MARKING
+    "#b4aea4": 0.09,  # SETT — pavements, genuinely above the road
+    "#aca69c": 0.09,  # UNHEWN_COBBLESTONE
+    "#c0bab0": 0.09,  # PAVING_STONE
+    "#c7c2b8": 0.09,  # CONCRETE
+    "#c8c3ba": 0.12,  # KERB — the top of the stack, as on a real street
 }
 
 # A triangle counts as ground if it is near-horizontal and near y = 0. Both
