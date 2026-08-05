@@ -93,10 +93,27 @@ echo "  cut:    $(du -h "$AREA_PBF" | cut -f1)"
 CLEAN_PBF="$WORK/clean.osm.pbf"
 "$REPO_ROOT/tools/clean-osm.py" "$AREA_PBF" -o "$CLEAN_PBF" | sed 's/^/  /'
 
-# Enumerate the XYZ tiles covering the bbox.
-mapfile -t TILES < <(python3 - "$ZOOM" "$S" "$W" "$N" "$E" <<'PY'
+# Enumerate the XYZ tiles covering the bbox, each cut with a small overlap.
+#
+# OSM2World places a tile's origin using the WGS84 prime-vertical radius but
+# sizes the tile's geometry with the spherical Web Mercator scale, so every
+# tile comes out N(phi)/a = 0.2114% smaller than the slot it is placed in.
+# Measured at z15/lat 52.5: adjacent origins 745.751 m apart carrying geometry
+# that spans 744.178 m, leaving a 1.573 m gap you can see the sky through along
+# every north-south seam.
+#
+# OSM2World does not clip output to the tile — it renders whatever the input
+# contains — so widening the cut widens the geometry. OVERLAP_M of 3 m yields
+# roughly 2.9 m of overlap after the shortfall, enough at any latitude (the
+# ratio varies by under 0.0003% across a city). The overlapping band is flat
+# terrain of identical colour, so coplanar z-fighting in it is invisible; the
+# alternative, scaling each tile's transform, would close this seam but push
+# the north-south seams, which already overlap by 0.283 m, into a visible one.
+OVERLAP_M="${OVERLAP_M:-3}"
+mapfile -t TILES < <(python3 - "$ZOOM" "$S" "$W" "$N" "$E" "$OVERLAP_M" <<'PY'
 import math, sys
-z, s, w, n, e = int(sys.argv[1]), *map(float, sys.argv[2:6])
+z = int(sys.argv[1])
+s, w, n, e, overlap = map(float, sys.argv[2:7])
 size = 2.0 ** z
 def xt(lon): return int((lon + 180.0) / 360.0 * size)
 def yt(lat): return int((1.0 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2.0 * size)
@@ -104,8 +121,11 @@ def lon_edge(x): return x / size * 360.0 - 180.0
 def lat_edge(y): return math.degrees(math.atan(math.sinh(math.pi * (1.0 - 2.0 * y / size))))
 for x in range(xt(w), xt(e) + 1):
     for y in range(yt(n), yt(s) + 1):
+        tw, ts, te, tn = lon_edge(x), lat_edge(y + 1), lon_edge(x + 1), lat_edge(y)
+        dlat = overlap / 111320.0
+        dlon = overlap / (111320.0 * math.cos(math.radians((ts + tn) / 2.0)))
         # west south east north, as osmium wants them
-        print(f"{x} {y} {lon_edge(x)} {lat_edge(y+1)} {lon_edge(x+1)} {lat_edge(y)}")
+        print(f"{x} {y} {tw - dlon} {ts - dlat} {te + dlon} {tn + dlat}")
 PY
 )
 
@@ -126,9 +146,9 @@ FAILED=0
 for entry in "${TILES[@]}"; do
   read -r TX TY TW TS TE TN <<<"$entry"
   TILE_PBF="$WORK/tile.osm.pbf"
-  # No padding: a pad re-introduces exactly the cross-tile overlap this loop
-  # exists to remove. `-s smart` still carries whole ways across the seam, so
-  # features straddling a boundary keep their shape.
+  # The cut carries only the few metres of OVERLAP_M computed above. The
+  # earlier 0.004 degree (~445 m) pad is what produced whole-area duplication;
+  # at 3 m only features actually touching a seam appear in both tiles.
   if ! osmium extract -s smart --set-bounds -b "$TW,$TS,$TE,$TN" \
        "$CLEAN_PBF" -o "$TILE_PBF" --overwrite 2>>"$WORK/bake.log"; then
     echo "  tile $TX/$TY: cut failed"

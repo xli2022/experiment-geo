@@ -148,7 +148,7 @@ tools/make-root-tileset.py public/tiles/berlin
 Note `--no-simplify`: `optimize-tiles.sh` otherwise runs a lossy geometry simplify pass,
 and crisp edges are the entire point of this style. The tiles are small enough without it.
 
-### Three things the bake has to get right
+### Four things the bake has to get right
 
 Each of these fails quietly — you get output, it is just wrong.
 
@@ -158,8 +158,20 @@ produced tiles whose geometry AABBs were *identical* at 1558×1892 m — exactly
 extract's bounds — against a true z15 tile size of 744×744 m at this latitude. Every tile
 held a full copy of the area, so N tiles meant N coincident copies z-fighting against each
 other and N× the triangles. `tools/bake.sh` therefore loops, cutting the input to each
-tile's own bounds before baking that tile. No padding on the per-tile cut: a pad
-re-introduces the overlap the loop exists to remove.
+tile's own bounds before baking that tile. The cut carries only a few metres of
+deliberate overlap (see below) — the original 0.004° (~445 m) pad is what produced the
+whole-area duplication in the first place.
+
+**Tiles need a metres-wide overlap, because OSM2World sizes them slightly too
+small.** It places a tile's origin using the WGS84 prime-vertical radius but sizes the
+tile's geometry with the spherical Web Mercator scale, so every tile comes out
+`N(φ)/a` = **0.2114%** smaller than the slot it is placed in. Measured at z15 / lat 52.5:
+adjacent origins 745.751 m apart carrying geometry that spans 744.178 m, leaving a
+**1.573 m gap you can see the sky through** along every north–south seam — invisible from
+altitude, obvious at street level. `OVERLAP_M` (default 3 m) widens each per-tile cut to
+cover it. The overlapping band is flat terrain of one flat colour, so coplanar z-fighting
+inside it is invisible. Scaling each tile's transform instead would close this seam but
+push the east–west seams, which already overlap by 0.283 m, into a visible one.
 
 **One unmappable tag value kills the entire run.** OSM2World resolves `surface=*` through
 `DefaultMaterials.getSurfaceMaterial()`, and for a value it doesn't know that returns null
