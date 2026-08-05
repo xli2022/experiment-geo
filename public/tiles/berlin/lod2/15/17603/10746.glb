@@ -1,0 +1,168 @@
+{
+  "asset": {
+    "generator": "glTF-Transform v4.4.2",
+    "version": "2.0"
+  },
+  "accessors": [
+    {
+      "type": "SCALAR",
+      "componentType": 5123,
+      "count": 711
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 597
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 597,
+      "max": [
+        242.947998046875,
+        9.699999809265137,
+        372.0710144042969
+      ],
+      "min": [
+        -327.6059875488281,
+        0,
+        -354.8330078125
+      ]
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 597
+    },
+    {
+      "type": "SCALAR",
+      "componentType": 5125,
+      "count": 305562
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 221941
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 221941,
+      "max": [
+        372.0889892578125,
+        82,
+        372.0710144042969
+      ],
+      "min": [
+        -372.0889892578125,
+        -1.5987211554602254e-14,
+        -372.1000061035156
+      ]
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 221941
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 1232
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1232,
+      "byteLength": 327836
+    }
+  ],
+  "buffers": [
+    {
+      "uri": "10746.glb.bin",
+      "byteLength": 329068
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "pbrMetallicRoughness": {}
+    },
+    {
+      "pbrMetallicRoughness": {}
+    }
+  ],
+  "meshes": [
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "COLOR_0": 1,
+            "POSITION": 2,
+            "NORMAL": 3
+          },
+          "mode": 4,
+          "material": 0,
+          "indices": 0,
+          "extensions": {
+            "KHR_draco_mesh_compression": {
+              "bufferView": 0,
+              "attributes": {
+                "COLOR_0": 0,
+                "POSITION": 1,
+                "NORMAL": 2
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "COLOR_0": 5,
+            "POSITION": 6,
+            "NORMAL": 7
+          },
+          "mode": 4,
+          "material": 1,
+          "indices": 4,
+          "extensions": {
+            "KHR_draco_mesh_compression": {
+              "bufferView": 1,
+              "attributes": {
+                "COLOR_0": 0,
+                "POSITION": 1,
+                "NORMAL": 2
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0
+    },
+    {
+      "mesh": 1
+    }
+  ],
+  "scenes": [
+    {
+      "nodes": [
+        0,
+        1
+      ]
+    }
+  ],
+  "scene": 0,
+  "extensionsUsed": [
+    "KHR_draco_mesh_compression"
+  ],
+  "extensionsRequired": [
+    "KHR_draco_mesh_compression"
+  ]
+}

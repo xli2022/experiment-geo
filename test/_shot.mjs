@@ -40,5 +40,5 @@ const dataUrl = await p.evaluate(() => {
   viewer.renderer.render(viewer.scene, viewer.camera);
   return viewer.renderer.domElement.toDataURL('image/png');
 });
-fs.writeFileSync('hybrid.png', Buffer.from(dataUrl.split(',')[1], 'base64'));
+fs.writeFileSync('lowpoly.png', Buffer.from(dataUrl.split(',')[1], 'base64'));
 await b.close();

@@ -8,7 +8,7 @@
  * variable rather than a constant.
  */
 export const TILESET_URL =
-  import.meta.env.VITE_TILESET_URL ?? `${import.meta.env.BASE_URL}tiles/berlin-hybrid/tileset.json`;
+  import.meta.env.VITE_TILESET_URL ?? `${import.meta.env.BASE_URL}tiles/berlin/tileset.json`;
 
 /** Screen-space error target in pixels. Lower = more detail, more memory. */
 export const ERROR_TARGET = Number(import.meta.env.VITE_ERROR_TARGET ?? 12);
@@ -19,13 +19,13 @@ export const START_ALTITUDE = 700;
 /**
  * Optional point to place at the world origin, as "lat,lon".
  *
- * Needed when the tileset is a partial subtree of a city-wide one (see
- * tools/fetch-3dtiles.py) — otherwise it re-centres on its own bounding
- * sphere, which is the middle of the whole city rather than the part that was
- * actually downloaded.
+ * The bake's own bounds are correct, so this is no longer load-bearing the way
+ * it was for a partial subtree of a city-wide tileset — but pinning it keeps
+ * the opening view over the same part of the city across re-bakes, rather than
+ * drifting with the bounding sphere whenever the baked area changes.
  */
-// Berlin Mitte — the centre of the downloaded subtree.
-const anchorEnv = import.meta.env.VITE_TILESET_ANCHOR ?? '52.5170,13.3889';
+// Berlin Mitte — the centre of the baked area.
+const anchorEnv = import.meta.env.VITE_TILESET_ANCHOR ?? '52.5170,13.3890';
 export const TILESET_ANCHOR = anchorEnv
   ? (([lat, lon]) => ({ lat, lon }))(anchorEnv.split(',').map(Number) as [number, number])
   : undefined;
