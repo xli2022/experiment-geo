@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Separate the ground layers vertically so they stop fighting for the same depth.
+Separate coincident surfaces vertically so they stop fighting for the same depth.
 
 Why this exists
 ---------------
@@ -23,8 +23,10 @@ street is actually built. Offsets are centimetres, far below what reads as a
 step at any altitude you fly at, but far above the depth buffer's resolution
 at these ranges.
 
-Only near-horizontal triangles near the ground are touched, so a wall sharing
-a material with a pavement is left alone.
+Only near-horizontal triangles near the ground are touched by the layer table,
+so a wall sharing a material with a pavement is left alone. A second table
+lifts whole objects — currently tree crowns, whose undersides land exactly on
+the trunk cap on every tree in the city.
 
 Run on the raw bake, before tools/optimize-tiles.sh — Draco-compressed
 accessors have no readable buffer view.
@@ -48,35 +50,52 @@ import numpy as np
 # actually built: ground below, made surfaces above it, paint on top of those,
 # and the pavement raised over the carriageway as a real kerb would be.
 #
-# The 3 cm step is set by the compressor, not by taste. Draco quantizes
-# positions onto a uniform grid sized by the mesh's largest extent, so a 750 m
-# tile lands every axis on ~11.4 mm at the 16 bits tools/optimize-tiles.sh now
-# requests. An earlier version of this table used 5–20 mm steps against Draco's
-# *default* 14 bits, which is a 45.8 mm grid — every separation below half a
-# step collapsed back to a shared height during compression, so the offsets
-# were applied correctly and then silently undone. Keep the smallest gap here
-# at least twice the grid.
+# Every material gets its own level; sharing one only moves the fight rather
+# than ending it.
+#
+# The step floor is set by the compressor, not by taste. Draco quantizes
+# positions onto a uniform grid sized by the mesh's largest extent. An earlier
+# version of this table used 5-20 mm steps against Draco's *default* 14 bits,
+# which is a 45.8 mm grid on a 750 m tile — every separation below half a step
+# collapsed back to a shared height during compression, so the offsets were
+# applied correctly and then silently undone. At the 16 bits
+# tools/optimize-tiles.sh now requests the grid measures 0.11 mm, so the 4 mm
+# sub-steps here have ample headroom.
 LAYERS = {
-    "#a9bd8d": -0.12,  # TERRAIN_DEFAULT — the sheet everything else sits on
-    "#8fb573": -0.09,  # GRASS
-    "#7fa365": -0.09,  # SCRUB
-    "#6f9457": -0.09,  # HEDGE
-    "#a68f6d": -0.09,  # EARTH
-    "#dcc9a0": -0.09,  # SAND
-    "#ddd3c0": -0.09,  # SHELLS
-    "#9c968c": -0.06,  # RAIL_BALLAST
-    "#8a8580": -0.06,  # RAILWAY
-    "#b2aca2": -0.06,  # GRAVEL
-    "#aaa49a": -0.06,  # SCREE
-    "#b7b1a7": -0.06,  # PEBBLESTONE
+    "#a9bd8d": -0.120,  # TERRAIN_DEFAULT — the sheet everything else sits on
+    "#8fb573": -0.090,  # GRASS
+    "#7fa365": -0.086,  # SCRUB
+    "#6f9457": -0.082,  # HEDGE
+    "#a68f6d": -0.078,  # EARTH
+    "#dcc9a0": -0.074,  # SAND
+    "#ddd3c0": -0.070,  # SHELLS
+    "#9c968c": -0.060,  # RAIL_BALLAST
+    "#8a8580": -0.056,  # RAILWAY
+    "#b2aca2": -0.052,  # GRAVEL
+    "#aaa49a": -0.048,  # SCREE
+    "#b7b1a7": -0.044,  # PEBBLESTONE
     # ASPHALT stays at 0 — it is the reference the rest are placed around.
-    "#f2f2ee": 0.03,  # ROAD_MARKING and friends, painted onto the carriageway
-    "#d98a7a": 0.03,  # RED_ROAD_MARKING
-    "#b4aea4": 0.09,  # SETT — pavements, genuinely above the road
-    "#aca69c": 0.09,  # UNHEWN_COBBLESTONE
-    "#c0bab0": 0.09,  # PAVING_STONE
-    "#c7c2b8": 0.09,  # CONCRETE
-    "#c8c3ba": 0.12,  # KERB — the top of the stack, as on a real street
+    "#f2f2ee": 0.030,  # ROAD_MARKING and friends, painted onto the carriageway
+    "#d98a7a": 0.045,  # RED_ROAD_MARKING — cycle lanes, well clear of white paint
+    "#b4aea4": 0.086,  # SETT — pavements, genuinely above the road
+    "#aca69c": 0.090,  # UNHEWN_COBBLESTONE
+    "#c0bab0": 0.094,  # PAVING_STONE
+    "#c7c2b8": 0.098,  # CONCRETE
+    "#c8c3ba": 0.120,  # KERB — the top of the stack, as on a real street
+}
+
+# Whole objects nudged rigidly, at whatever height they sit, rather than layers
+# of ground. Every vertex of the matching colour moves, so the shape is
+# unchanged — it is only lifted clear of whatever it was tied with.
+#
+# Trees are the reason this exists, and they were the single largest source of
+# coplanar surfaces left in the world once the ground was sorted out: measured
+# 3,032 conflicting pairs of TREE_CROWN against TREE_TRUNK in one tile, more
+# than half of everything remaining. OSM2World builds a tree as a trunk with a
+# crown on top, and the crown's underside lands exactly on the trunk's cap, so
+# every tree in the city carries a coincident pair. There are thousands of them.
+RIGID = {
+    "#6f9a57": 0.04,  # TREE_CROWN — lifted clear of the trunk it sits on
 }
 
 # A triangle counts as ground if it is near-horizontal and near y = 0. Both
@@ -108,11 +127,12 @@ def main() -> int:
         return 1
 
     layers = [(np.array(hex_to_linear(h)), dy) for h, dy in LAYERS.items()]
+    rigid = [(np.array(hex_to_linear(h)), dy) for h, dy in RIGID.items()]
 
     total = 0
     tiles = 0
     for path in paths:
-        moved = process(path, layers)
+        moved = process(path, layers, rigid)
         if moved is None:
             continue
         total += moved
@@ -120,11 +140,11 @@ def main() -> int:
         if moved:
             print(f"  {os.path.relpath(path, args.tiles_dir)}: {moved:,} vertices")
 
-    print(f"Offset {total:,} ground vertices across {tiles} tiles")
+    print(f"Offset {total:,} vertices across {tiles} tiles")
     return 0
 
 
-def process(path: str, layers) -> int | None:
+def process(path: str, layers, rigid) -> int | None:
     with open(path, "rb") as fh:
         data = fh.read()
     if data[:4] != b"glTF":
@@ -155,8 +175,6 @@ def process(path: str, layers) -> int | None:
             flat = np.abs(normals[tris[:, 0]][:, 1]) > NORMAL_UP
             low = np.abs(positions[tris][:, :, 1]).max(axis=1) < GROUND_BAND
             candidates = tris[flat & low]
-            if not len(candidates):
-                continue
 
             for base, dy in layers:
                 matched = np.all(np.abs(colors - base) < MATCH_EPS, axis=1)
@@ -166,6 +184,16 @@ def process(path: str, layers) -> int | None:
                 verts = np.unique(sel)
                 positions[verts, 1] += dy
                 moved += len(verts)
+
+            # Rigid objects ignore the ground gate entirely — a tree crown is
+            # neither horizontal nor near y = 0, and it has to move as a whole
+            # or it would be deformed rather than lifted.
+            for base, dy in rigid:
+                matched = np.all(np.abs(colors - base) < MATCH_EPS, axis=1)
+                if not matched.any():
+                    continue
+                positions[matched, 1] += dy
+                moved += int(matched.sum())
 
             write_vec3(binary, p_off, positions)
             update_bounds(gltf, attrs["POSITION"], positions)
