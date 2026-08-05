@@ -1,126 +1,171 @@
 #!/usr/bin/env bash
 #
-# Bake an OSM extract into OGC 3D Tiles with OSM2World.
+# Bake an OSM extract into OGC 3D Tiles with OSM2World, one tile at a time.
 #
-# The baked output is a build artifact, not source — it is gitignored, and this
-# script plus a pinned extract date is the reproducible source of truth.
+# The baked output is a build artifact, not source — this script plus a pinned
+# extract date is the reproducible source of truth.
 #
 # Usage:
-#   tools/bake.sh <city> <south,west north,east> [lod]
+#   tools/bake.sh <city> <south,west north,east> [lod] [zoom]
 #
 # Example:
-#   tools/bake.sh monaco "43.7237,7.4090 43.7519,7.4398" 2
+#   tools/bake.sh berlin "52.5085,13.3805 52.5255,13.4035" 2
 #
 # Environment:
 #   OSM2WORLD_HOME  Directory containing OSM2World.jar (default: vendor/osm2world)
 #   OSM_PBF         Path to the input .osm.pbf (default: vendor/extracts/<city>.osm.pbf)
-#   JAVA_HEAP       JVM max heap (default: 6g)
+#   JAVA_HEAP       JVM max heap (default: 10g)
+#   O2W_CONFIG      OSM2World properties file (default: the generated low-poly config)
 
 set -euo pipefail
 
-CITY="${1:?usage: bake.sh <city> <\"south,west north,east\"> [lod]}"
-BBOX="${2:?usage: bake.sh <city> <\"south,west north,east\"> [lod]}"
+CITY="${1:?usage: bake.sh <city> <\"south,west north,east\"> [lod] [zoom]}"
+BBOX="${2:?usage: bake.sh <city> <\"south,west north,east\"> [lod] [zoom]}"
 LOD="${3:-2}"
+ZOOM="${4:-15}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OSM2WORLD_HOME="${OSM2WORLD_HOME:-$REPO_ROOT/vendor/osm2world}"
 OSM_PBF="${OSM_PBF:-$REPO_ROOT/vendor/extracts/$CITY.osm.pbf}"
 JAVA_HEAP="${JAVA_HEAP:-10g}"
+O2W_CONFIG="${O2W_CONFIG:-$OSM2WORLD_HOME/lowpoly.properties}"
 OUT_DIR="$REPO_ROOT/public/tiles/$CITY"
 
 if [[ ! -f "$OSM2WORLD_HOME/OSM2World.jar" ]]; then
   echo "error: OSM2World.jar not found in $OSM2WORLD_HOME" >&2
   echo "  Download: https://osm2world.org/download/files/latest/OSM2World-latest-bin.zip" >&2
-  echo "  Then unzip it there, or set OSM2WORLD_HOME." >&2
   exit 1
 fi
-
 if [[ ! -f "$OSM_PBF" ]]; then
   echo "error: input extract not found: $OSM_PBF" >&2
   echo "  Download one from https://download.geofabrik.de/ or set OSM_PBF." >&2
   exit 1
 fi
-
 if ! command -v osmium >/dev/null 2>&1; then
   echo "error: osmium not found (apt-get install osmium-tool)" >&2
-  echo "  Required — see the comment on the cut step below for why." >&2
+  exit 1
+fi
+if [[ ! -f "$O2W_CONFIG" ]]; then
+  echo "error: OSM2World config not found: $O2W_CONFIG" >&2
+  echo "  Generate it: tools/make-lowpoly-config.py $OSM2WORLD_HOME/standard.properties \\" >&2
+  echo "                 -o $OSM2WORLD_HOME/lowpoly.properties" >&2
   exit 1
 fi
 
-echo "Baking $CITY at LOD $LOD"
+echo "Baking $CITY at LOD $LOD, zoom $ZOOM"
 echo "  input:  $OSM_PBF ($(du -h "$OSM_PBF" | cut -f1))"
 echo "  bbox:   $BBOX"
+echo "  config: $O2W_CONFIG"
 echo "  output: $OUT_DIR"
 
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
-
+# Scratch lives outside public/ — anything under it is copied into dist/ by
+# Vite and would be published alongside the world.
+WORK="$REPO_ROOT/vendor/.bake-work/$CITY"
+rm -rf "$WORK"
+mkdir -p "$WORK"
 START=$(date +%s)
 
-# Cut the input down to the target area first.
-#
-# OSM2World loads the *entire* input file into memory — --bbox only selects
-# which tiles get written, it does not reduce what gets parsed. A city-sized
-# Geofabrik extract (Berlin is 95 MB) exhausts a 12 GB heap before producing a
-# single tile; the same area cut to 1.6 MB bakes in seconds.
-#
-# --set-bounds is load-bearing and very easy to miss: osmium omits the
-# bounding-box header by default, and without it OSM2World derives a degenerate
-# bounds and fails *every* tile with "a polygon's area must be positive" /
-# "cannot construct polygon from zero area rectangle". Verified by cutting a
-# known-good Monaco extract both ways — without the flag 16/16 tiles failed,
-# with it 16/16 succeeded.
-#
-# -s smart keeps relations intact across the cut boundary.
-CUT_PBF="$OUT_DIR/.input.osm.pbf"
 read -r SW NE <<<"$BBOX"
 IFS=, read -r S W <<<"$SW"
 IFS=, read -r N E <<<"$NE"
-# osmium wants west,south,east,north; our bbox is "south,west north,east".
-# Pad the cut so geometry at the render boundary still has its context.
+
+# Cut once to the whole area, then strip tag values OSM2World cannot map.
+#
+# OSM2World loads the *entire* input file into memory — a city-sized Geofabrik
+# extract exhausts a 12 GB heap before producing a tile. And a single
+# unmappable `surface=` value anywhere in the input aborts every tile in the
+# run, not just the offending way (see tools/clean-osm.py).
+#
+# --set-bounds is load-bearing and easy to miss: osmium omits the bounding-box
+# header by default, and without it OSM2World derives degenerate bounds and
+# fails every tile with "a polygon's area must be positive". Verified by
+# cutting a known-good Monaco extract both ways — without the flag 16/16 tiles
+# failed, with it 16/16 succeeded.
+AREA_PBF="$WORK/area.osm.pbf"
 PAD=0.004
 osmium extract -s smart --set-bounds \
   -b "$(bc -l <<<"$W-$PAD"),$(bc -l <<<"$S-$PAD"),$(bc -l <<<"$E+$PAD"),$(bc -l <<<"$N+$PAD")" \
-  "$OSM_PBF" -o "$CUT_PBF" --overwrite
-echo "  cut:    $(du -h "$CUT_PBF" | cut -f1)"
+  "$OSM_PBF" -o "$AREA_PBF" --overwrite
+echo "  cut:    $(du -h "$AREA_PBF" | cut -f1)"
 
-java "-Xmx$JAVA_HEAP" -jar "$OSM2WORLD_HOME/OSM2World.jar" tileset \
-  --input "$CUT_PBF" \
-  --baseDir "$OUT_DIR" \
-  --bbox="$BBOX" \
-  --lod="$LOD" \
-  --overwrite=always \
-  > "$OUT_DIR/.bake.log" 2>&1 || true
+CLEAN_PBF="$WORK/clean.osm.pbf"
+"$REPO_ROOT/tools/clean-osm.py" "$AREA_PBF" -o "$CLEAN_PBF" | sed 's/^/  /'
 
-rm -f "$CUT_PBF"
+# Enumerate the XYZ tiles covering the bbox.
+mapfile -t TILES < <(python3 - "$ZOOM" "$S" "$W" "$N" "$E" <<'PY'
+import math, sys
+z, s, w, n, e = int(sys.argv[1]), *map(float, sys.argv[2:6])
+size = 2.0 ** z
+def xt(lon): return int((lon + 180.0) / 360.0 * size)
+def yt(lat): return int((1.0 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2.0 * size)
+def lon_edge(x): return x / size * 360.0 - 180.0
+def lat_edge(y): return math.degrees(math.atan(math.sinh(math.pi * (1.0 - 2.0 * y / size))))
+for x in range(xt(w), xt(e) + 1):
+    for y in range(yt(n), yt(s) + 1):
+        # west south east north, as osmium wants them
+        print(f"{x} {y} {lon_edge(x)} {lat_edge(y+1)} {lon_edge(x+1)} {lat_edge(y)}")
+PY
+)
+
+echo "  tiles:  ${#TILES[@]} to bake"
+echo
+
+# Bake each tile from an input cut to that tile's own bounds.
+#
+# This is the whole reason the script loops. OSM2World renders *everything in
+# the input file* into every tile it writes — the tile argument only picks the
+# output path. Feeding it the full area once produced N tiles that each
+# contained the entire area: measured 4 tiles whose geometry AABBs were
+# identical at 1558x1892 m, exactly the input extract's bounds, against a true
+# z15 tile size of 1223x744 m. Stacked coincident copies z-fight against each
+# other and multiply the triangle count by N.
+OK=0
+FAILED=0
+for entry in "${TILES[@]}"; do
+  read -r TX TY TW TS TE TN <<<"$entry"
+  TILE_PBF="$WORK/tile.osm.pbf"
+  # No padding: a pad re-introduces exactly the cross-tile overlap this loop
+  # exists to remove. `-s smart` still carries whole ways across the seam, so
+  # features straddling a boundary keep their shape.
+  if ! osmium extract -s smart --set-bounds -b "$TW,$TS,$TE,$TN" \
+       "$CLEAN_PBF" -o "$TILE_PBF" --overwrite 2>>"$WORK/bake.log"; then
+    echo "  tile $TX/$TY: cut failed"
+    FAILED=$((FAILED + 1))
+    continue
+  fi
+
+  if (cd "$OSM2WORLD_HOME" && java "-Xmx$JAVA_HEAP" -jar OSM2World.jar tileset \
+        --input "$TILE_PBF" --baseDir "$OUT_DIR" \
+        --bboxTiles="$ZOOM,$TX,$TY" --lod="$LOD" \
+        --config "$O2W_CONFIG" --overwrite=always >>"$WORK/bake.log" 2>&1) \
+     && [[ -s "$(find "$OUT_DIR" -name "$TY.glb" -path "*/$TX/*" | head -1)" ]]; then
+    OK=$((OK + 1))
+    printf '  tile %s/%s ok (%d/%d)\n' "$TX" "$TY" "$((OK + FAILED))" "${#TILES[@]}"
+  else
+    FAILED=$((FAILED + 1))
+    printf '  tile %s/%s FAILED (%d/%d)\n' "$TX" "$TY" "$((OK + FAILED))" "${#TILES[@]}"
+  fi
+done
+
+rm -rf "$WORK/area.osm.pbf" "$WORK/clean.osm.pbf" "$WORK/tile.osm.pbf"
 
 ELAPSED=$(( $(date +%s) - START ))
-TILES_OK=$(find "$OUT_DIR" -name '*.glb' -size +1k | wc -l)
-TILES_FAILED=$(grep -c "Failed to create tile" "$OUT_DIR/.bake.log" || true)
-
 echo
 echo "Baked in ${ELAPSED}s"
-echo "  tiles:  $TILES_OK written, $TILES_FAILED failed"
+echo "  tiles:  $OK written, $FAILED failed"
 
-# A tile that fails is silently absent rather than loudly broken, so surface it.
-# OSM2World aborts a whole tile on one bad polygon, and some regions trip
-# unhandled cases in its geometry or material lookup (see README).
-if (( TILES_OK == 0 )); then
+if (( OK == 0 )); then
   echo "  ERROR: no tiles were produced. Last errors:" >&2
-  grep -oE "Failed to create tile.*|NullPointerException.*|OutOfMemoryError.*" \
-    "$OUT_DIR/.bake.log" 2>/dev/null | sort -u | head -3 >&2
+  grep -oE "Caused by:.*|Failed to create tile.*|OutOfMemoryError.*" \
+    "$WORK/bake.log" 2>/dev/null | sort -u | head -5 >&2
   exit 1
 fi
 
 SIZE_BYTES=$(du -sb "$OUT_DIR" | cut -f1)
-echo "  size:   $(du -sh "$OUT_DIR" | cut -f1)"
-
-# GitHub Pages hard-caps a published site at 1 GB. Because the app bundle is
-# negligible next to the tileset, this is effectively the tileset's budget.
-PAGES_LIMIT=$((1024 * 1024 * 1024))
-PERCENT=$(( SIZE_BYTES * 100 / PAGES_LIMIT ))
-echo "  uses ${PERCENT}% of the 1 GB GitHub Pages budget"
-if (( SIZE_BYTES > PAGES_LIMIT )); then
-  echo "  WARNING: over the GitHub Pages limit — shrink the bbox, drop a LOD," >&2
-  echo "           or host the tileset on R2 and set VITE_TILESET_URL." >&2
-fi
+echo "  size:   $(du -sh "$OUT_DIR" | cut -f1) (before tools/optimize-tiles.sh)"
+echo
+echo "Next:"
+echo "  tools/optimize-tiles.sh $OUT_DIR"
+echo "  tools/make-root-tileset.py $OUT_DIR"

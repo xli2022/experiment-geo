@@ -28,3 +28,7 @@ vendor/
 /ortho.png
 /ortho.json
 /*.png
+
+# Python bytecode from the tools/
+__pycache__/
+*.pyc
