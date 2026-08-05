@@ -30,7 +30,7 @@ npm run build       # typecheck + vite build
 
 ## Controls
 
-Click the canvas to capture the pointer, then:
+**Desktop** — click the canvas to capture the pointer, then:
 
 | Input | Action |
 |---|---|
@@ -40,8 +40,25 @@ Click the canvas to capture the pointer, then:
 | `Shift` | Boost (×4) |
 | `Esc` | Release the pointer |
 
-Movement speed scales with altitude, so the controls feel the same whether you're
+**Touch** — no pointer lock and no keyboard, so the scheme is different:
+
+| Input | Action |
+|---|---|
+| Left half | Floating virtual stick — strafe and forward/back |
+| Right half | Drag to look |
+| ▲ / ▼ | Climb / descend |
+| » | Boost |
+
+The stick materialises wherever your thumb lands rather than sitting at a fixed spot —
+on a phone held any number of ways, a fixed stick is a constant small aiming task.
+Touches are tracked by identifier, so moving and looking work simultaneously.
+
+Movement speed scales with altitude on both, so the controls feel the same whether you're
 inspecting a doorway or crossing the city.
+
+Input lives behind `InputSource` (`src/camera/input/`), and both sources are attached when
+the device supports both — a touchscreen laptop gets each without either knowing about the
+other.
 
 ## The world
 

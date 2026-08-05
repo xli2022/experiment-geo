@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { clampPitch, damp, speedForAltitude } from './flyMath';
+import { KeyboardMouseInput } from './input/KeyboardMouseInput';
+import { TouchInput } from './input/TouchInput';
+import { createInputState, resetInputState, type InputSource } from './input/types';
 
 export interface FlyCameraOptions {
-  /** Radians of rotation per pixel of mouse movement. */
-  lookSensitivity?: number;
   /** Smoothing rate for movement. Higher is snappier. */
   moveDamping?: number;
   /** Smoothing rate for look direction. Higher is snappier. */
@@ -12,43 +13,25 @@ export interface FlyCameraOptions {
   groundHeight?: number;
 }
 
-const KEY_BINDINGS: Record<string, keyof typeof INITIAL_INPUT> = {
-  KeyW: 'forward',
-  KeyS: 'back',
-  KeyA: 'left',
-  KeyD: 'right',
-  KeyE: 'up',
-  KeyQ: 'down',
-  Space: 'up',
-  ShiftLeft: 'boost',
-  ShiftRight: 'boost',
-};
-
-const INITIAL_INPUT = {
-  forward: false,
-  back: false,
-  left: false,
-  right: false,
-  up: false,
-  down: false,
-  boost: false,
-};
-
 /**
- * Six-degree-of-freedom free-fly camera driven by pointer lock.
+ * Six-degree-of-freedom free-fly camera.
  *
  * Deliberately does not allow roll: for a viewer (as opposed to a flight sim)
  * it causes more disorientation than it adds, and it makes "which way is up"
  * ambiguous when you stop moving.
+ *
+ * Input comes from `InputSource`s rather than listeners owned here, so
+ * keyboard/mouse and touch both work — and can be active at once on hybrid
+ * devices without either knowing about the other.
  */
 export class FlyCamera {
   private readonly camera: THREE.PerspectiveCamera;
-  private readonly canvas: HTMLCanvasElement;
   private readonly opts: Required<FlyCameraOptions>;
+  private readonly sources: InputSource[] = [];
+  private readonly state = createInputState();
+  private readonly keyboardMouse: KeyboardMouseInput;
 
-  private readonly input = { ...INITIAL_INPUT };
-
-  /** Target orientation, driven directly by the mouse. */
+  /** Target orientation, driven by input. */
   private targetYaw = 0;
   private targetPitch = 0;
   /** Smoothed orientation, what the camera actually uses. */
@@ -56,7 +39,8 @@ export class FlyCamera {
   private pitch = 0;
 
   private readonly velocity = new THREE.Vector3();
-  private locked = false;
+  private readonly desired = new THREE.Vector3();
+  private readonly euler = new THREE.Euler(0, 0, 0, 'YXZ');
 
   constructor(
     camera: THREE.PerspectiveCamera,
@@ -64,26 +48,37 @@ export class FlyCamera {
     options: FlyCameraOptions = {},
   ) {
     this.camera = camera;
-    this.canvas = canvas;
     this.opts = {
-      lookSensitivity: options.lookSensitivity ?? 0.0022,
       moveDamping: options.moveDamping ?? 8,
       lookDamping: options.lookDamping ?? 25,
       groundHeight: options.groundHeight ?? 0,
     };
 
-    this.syncFromCamera();
+    this.keyboardMouse = new KeyboardMouseInput(canvas);
+    this.sources.push(this.keyboardMouse);
 
-    canvas.addEventListener('click', this.requestLock);
-    document.addEventListener('pointerlockchange', this.onLockChange);
-    document.addEventListener('mousemove', this.onMouseMove);
-    window.addEventListener('keydown', this.onKeyDown);
-    window.addEventListener('keyup', this.onKeyUp);
-    window.addEventListener('blur', this.clearInput);
+    // Attached whenever touch is available rather than on a device sniff:
+    // laptops with touchscreens get both, and nothing is shown until a touch
+    // actually happens.
+    if (hasTouch()) {
+      this.sources.push(new TouchInput(canvas));
+    }
+
+    this.syncFromCamera();
   }
 
+  /** True while the desktop pointer lock is engaged. Always false on touch. */
   get isLocked(): boolean {
-    return this.locked;
+    return this.keyboardMouse.isLocked;
+  }
+
+  /** Height above ground in metres. */
+  get altitude(): number {
+    return this.camera.position.y - this.opts.groundHeight;
+  }
+
+  get speed(): number {
+    return speedForAltitude(this.altitude, this.state.boost);
   }
 
   /**
@@ -95,90 +90,57 @@ export class FlyCamera {
    * silently discarding a `lookAt`.
    */
   syncFromCamera(): void {
-    const euler = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ');
-    this.yaw = this.targetYaw = euler.y;
-    this.pitch = this.targetPitch = clampPitch(euler.x);
+    this.euler.setFromQuaternion(this.camera.quaternion, 'YXZ');
+    this.yaw = this.targetYaw = this.euler.y;
+    this.pitch = this.targetPitch = clampPitch(this.euler.x);
     this.velocity.set(0, 0, 0);
   }
 
-  /** Height above ground in metres. */
-  get altitude(): number {
-    return this.camera.position.y - this.opts.groundHeight;
-  }
-
-  get speed(): number {
-    return speedForAltitude(this.altitude, this.input.boost);
-  }
-
   update(dt: number): void {
-    // Look: smooth toward the mouse-driven target.
+    resetInputState(this.state);
+    for (const source of this.sources) source.sample(this.state);
+
+    this.targetYaw += this.state.lookDx;
+    this.targetPitch = clampPitch(this.targetPitch + this.state.lookDy);
+
+    // Look: smooth toward the input-driven target.
     const lookAlpha = damp(this.opts.lookDamping, dt);
     this.yaw += (this.targetYaw - this.yaw) * lookAlpha;
     this.pitch += (this.targetPitch - this.pitch) * lookAlpha;
+    this.euler.set(this.pitch, this.yaw, 0, 'YXZ');
+    this.camera.quaternion.setFromEuler(this.euler);
 
-    this.camera.quaternion.setFromEuler(new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ'));
-
-    // Movement: build a desired velocity in camera space, then smooth toward it.
-    const desired = new THREE.Vector3(
-      Number(this.input.right) - Number(this.input.left),
-      Number(this.input.up) - Number(this.input.down),
-      Number(this.input.back) - Number(this.input.forward),
+    // Movement: build a desired velocity, then smooth toward it. Analogue
+    // sources can exceed 1 per axis when combined, so clamp rather than
+    // normalise — normalising would make a half-deflected stick full speed.
+    this.desired.set(
+      THREE.MathUtils.clamp(this.state.moveRight, -1, 1),
+      THREE.MathUtils.clamp(this.state.moveUp, -1, 1),
+      -THREE.MathUtils.clamp(this.state.moveForward, -1, 1),
     );
 
-    if (desired.lengthSq() > 0) {
-      desired.normalize().multiplyScalar(this.speed);
+    if (this.desired.lengthSq() > 0) {
+      if (this.desired.lengthSq() > 1) this.desired.normalize();
+      this.desired.multiplyScalar(this.speed);
       // Horizontal movement follows where you look; vertical stays world-aligned
-      // so Q/E always mean "straight down/up" regardless of pitch.
-      const vertical = desired.y;
-      desired.y = 0;
-      desired.applyQuaternion(this.camera.quaternion);
-      desired.y += vertical;
+      // so climb/descend always mean straight down/up regardless of pitch.
+      const vertical = this.desired.y;
+      this.desired.y = 0;
+      this.desired.applyQuaternion(this.camera.quaternion);
+      this.desired.y += vertical;
     }
 
     const moveAlpha = damp(this.opts.moveDamping, dt);
-    this.velocity.addScaledVector(desired.sub(this.velocity), moveAlpha);
+    this.velocity.addScaledVector(this.desired.sub(this.velocity), moveAlpha);
     this.camera.position.addScaledVector(this.velocity, dt);
   }
 
   dispose(): void {
-    this.canvas.removeEventListener('click', this.requestLock);
-    document.removeEventListener('pointerlockchange', this.onLockChange);
-    document.removeEventListener('mousemove', this.onMouseMove);
-    window.removeEventListener('keydown', this.onKeyDown);
-    window.removeEventListener('keyup', this.onKeyUp);
-    window.removeEventListener('blur', this.clearInput);
-    if (this.locked) document.exitPointerLock();
+    for (const source of this.sources) source.dispose();
+    this.sources.length = 0;
   }
+}
 
-  private requestLock = (): void => {
-    void this.canvas.requestPointerLock();
-  };
-
-  private onLockChange = (): void => {
-    this.locked = document.pointerLockElement === this.canvas;
-    if (!this.locked) this.clearInput();
-  };
-
-  private onMouseMove = (event: MouseEvent): void => {
-    if (!this.locked) return;
-    this.targetYaw -= event.movementX * this.opts.lookSensitivity;
-    this.targetPitch = clampPitch(this.targetPitch - event.movementY * this.opts.lookSensitivity);
-  };
-
-  private onKeyDown = (event: KeyboardEvent): void => {
-    const action = KEY_BINDINGS[event.code];
-    if (!action) return;
-    this.input[action] = true;
-    if (this.locked) event.preventDefault();
-  };
-
-  private onKeyUp = (event: KeyboardEvent): void => {
-    const action = KEY_BINDINGS[event.code];
-    if (action) this.input[action] = false;
-  };
-
-  /** Drop all held keys — otherwise losing focus mid-move leaves it stuck on. */
-  private clearInput = (): void => {
-    Object.assign(this.input, INITIAL_INPUT);
-  };
+function hasTouch(): boolean {
+  return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 }

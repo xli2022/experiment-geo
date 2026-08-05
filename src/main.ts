@@ -49,9 +49,15 @@ viewer.onUpdate((dt) => {
     alt: formatDistance(flyCamera.altitude),
     spd: `${flyCamera.speed.toFixed(0)} m/s`,
     tiles: String(world.tiles.visibleTiles.size),
-    ...(flyCamera.isLocked ? {} : { '': 'click to fly · WASD + QE · shift' }),
+    ...(flyCamera.isLocked ? {} : { '': CONTROL_HINT }),
   });
 });
+
+// Coarse pointers get the touch scheme, so tell them about that instead of
+// asking them to click and press keys they do not have.
+const CONTROL_HINT = matchMedia('(pointer: coarse)').matches
+  ? 'left: move · right: look · buttons: climb'
+  : 'click to fly · WASD + QE · shift';
 
 viewer.start();
 

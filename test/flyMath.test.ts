@@ -7,6 +7,7 @@ import {
   clampPitch,
   damp,
   speedForAltitude,
+  stickVector,
 } from '../src/camera/flyMath';
 
 describe('speedForAltitude', () => {
@@ -86,5 +87,45 @@ describe('clampPitch', () => {
   it('leaves ordinary angles alone', () => {
     expect(clampPitch(0)).toBe(0);
     expect(clampPitch(0.5)).toBe(0.5);
+  });
+});
+
+describe('stickVector', () => {
+  const R = 64;
+  const DZ = 0.12;
+
+  it('ignores movement inside the deadzone', () => {
+    expect(stickVector(0, 0, R, DZ)).toEqual({ x: 0, y: 0 });
+    expect(stickVector(R * DZ * 0.9, 0, R, DZ)).toEqual({ x: 0, y: 0 });
+  });
+
+  it('starts from zero at the deadzone edge rather than jumping', () => {
+    // The whole point of rescaling: crossing the threshold must not snap
+    // straight to 12% speed.
+    const justOutside = stickVector(R * DZ + 0.001, 0, R, DZ);
+    expect(justOutside.x).toBeGreaterThan(0);
+    expect(justOutside.x).toBeLessThan(0.001);
+  });
+
+  it('reaches exactly 1 at full deflection and clamps beyond', () => {
+    expect(stickVector(R, 0, R, DZ).x).toBeCloseTo(1, 6);
+    expect(stickVector(R * 5, 0, R, DZ).x).toBeCloseTo(1, 6);
+  });
+
+  it('preserves direction', () => {
+    const v = stickVector(-30, 40, R, DZ);
+    expect(v.x).toBeLessThan(0);
+    expect(v.y).toBeGreaterThan(0);
+    // Diagonal magnitude must not exceed 1, or diagonals outrun the axes.
+    expect(Math.hypot(v.x, v.y)).toBeLessThanOrEqual(1 + 1e-9);
+  });
+
+  it('is monotonic with distance', () => {
+    let previous = 0;
+    for (let d = 0; d <= R * 1.5; d += 2) {
+      const m = Math.hypot(...Object.values(stickVector(d, 0, R, DZ)));
+      expect(m).toBeGreaterThanOrEqual(previous - 1e-9);
+      previous = m;
+    }
   });
 });

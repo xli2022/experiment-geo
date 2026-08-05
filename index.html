@@ -7,8 +7,17 @@
     <style>
       :root { color-scheme: dark; }
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      html, body { width: 100%; height: 100%; overflow: hidden; background: #0b0f14; }
-      canvas { display: block; width: 100%; height: 100%; }
+      html, body {
+        width: 100%; height: 100%; overflow: hidden; background: #0b0f14;
+        /* Without these a drag pans the page, pinches zoom the document and a
+           downward swipe triggers pull-to-refresh — all on top of the camera. */
+        touch-action: none;
+        overscroll-behavior: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+      }
+      canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 
       #hud {
         position: fixed;
@@ -17,11 +26,15 @@
         justify-content: space-between;
         align-items: flex-end;
         gap: 1rem;
-        padding: 0.75rem 1rem;
+        padding: 2.5rem 1rem 0.75rem;
         font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
-        color: rgba(255, 255, 255, 0.75);
-        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+        color: rgba(255, 255, 255, 0.92);
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
         pointer-events: none;
+        /* Aerial imagery is bright and busy — plain white text on it is
+           unreadable, so the HUD carries its own scrim rather than relying on
+           whatever happens to be underneath. */
+        background: linear-gradient(to top, rgba(6, 10, 14, 0.55), rgba(6, 10, 14, 0));
       }
       #hud a { color: inherit; pointer-events: auto; }
       #stats { white-space: pre; }
@@ -49,6 +62,68 @@
         border-radius: 3px;
         font: inherit;
         font-size: 0.9em;
+      }
+
+      /* --- touch controls --- */
+      .touch-controls { position: fixed; inset: 0; pointer-events: none; }
+
+      .touch-stick {
+        position: fixed;
+        width: 128px; height: 128px;
+        margin: -64px 0 0 -64px;
+        border: 2px solid rgba(255, 255, 255, 0.28);
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.06);
+      }
+      .touch-stick[hidden] { display: none; }
+      .touch-stick-knob {
+        position: absolute; top: 50%; left: 50%;
+        width: 52px; height: 52px;
+        transform: translate(-50%, -50%);
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.42);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+      }
+
+      .touch-buttons {
+        position: fixed;
+        right: max(1rem, env(safe-area-inset-right));
+        bottom: max(4.5rem, calc(env(safe-area-inset-bottom) + 4.5rem));
+        display: grid;
+        gap: 0.6rem;
+        pointer-events: auto;
+      }
+      .touch-btn {
+        width: 62px; height: 62px;
+        border: 2px solid rgba(255, 255, 255, 0.28);
+        border-radius: 50%;
+        background: rgba(12, 18, 26, 0.45);
+        color: rgba(255, 255, 255, 0.85);
+        font: 20px/1 system-ui, sans-serif;
+        backdrop-filter: blur(3px);
+        touch-action: none;
+      }
+      .touch-btn.is-active {
+        background: rgba(255, 255, 255, 0.32);
+        color: #0b0f14;
+      }
+      .touch-btn-boost { font-size: 24px; }
+
+      /* Coarse pointers get a larger, higher-contrast HUD and no mouse hint. */
+      @media (pointer: coarse) {
+        #hud { font-size: 13px; padding: 0.75rem max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); }
+        #attribution { max-width: 45%; }
+      }
+      @media (max-width: 560px) {
+        #hud {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 0.35rem;
+          /* Keep clear of the control buttons stacked on the right. */
+          padding-right: 5.5rem;
+        }
+        #attribution { text-align: left; max-width: 100%; }
+        #stats { font-size: 12px; }
       }
     </style>
   </head>

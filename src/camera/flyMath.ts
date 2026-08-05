@@ -57,3 +57,27 @@ export const PITCH_LIMIT = Math.PI / 2 - 0.001;
 export function clampPitch(pitch: number): number {
   return clamp(pitch, -PITCH_LIMIT, PITCH_LIMIT);
 }
+
+/**
+ * Map a stick offset in pixels to a -1..1 vector, with a deadzone.
+ *
+ * The rescale past the deadzone matters: without it, control jumps straight
+ * from nothing to `deadzone` worth of speed the moment the thumb crosses the
+ * threshold. With it, movement starts from zero exactly where the deadzone
+ * ends, which is the difference between a stick that feels sloppy and one that
+ * feels precise.
+ */
+export function stickVector(
+  dx: number,
+  dy: number,
+  radius: number,
+  deadzone: number,
+): { x: number; y: number } {
+  const dist = Math.hypot(dx, dy);
+  const dead = radius * deadzone;
+  if (dist <= dead) return { x: 0, y: 0 };
+
+  const clamped = Math.min(dist, radius);
+  const t = (clamped - dead) / (radius - dead);
+  return { x: (dx / dist) * t, y: (dy / dist) * t };
+}
