@@ -9,7 +9,7 @@ city with realistic streets and buildings.
 |---|---|
 | Platform | Web — TypeScript + Vite + three.js |
 | Geometry | Berlin's open photogrammetric mesh (OGC 3D Tiles) |
-| Look | Photorealistic — real aerial-survey imagery |
+| Look | Stylized — aerial imagery flattened toward a city-builder palette |
 | Streaming | [`3d-tiles-renderer`](https://github.com/NASA-AMMOS/3DTilesRendererJS) |
 | Game layer | None yet — a world viewer first |
 
@@ -89,6 +89,30 @@ Two things it has to get right, both of which fail silently otherwise:
 
 The same tool works against [PLATEAU](https://www.mlit.go.jp/plateau/en/) (~250 Japanese
 cities) and [Helsinki 3D](https://www.hel.fi/en/decision-making/information-on-helsinki/maps-and-geospatial-data/helsinki-3d).
+
+### Restyling the textures
+
+Raw photogrammetry is accurate but visually noisy — desaturated, grainy, and full of
+high-frequency detail that reads as mush from altitude and grime up close.
+`tools/stylize-tiles.py` rewrites the textures inside the `.b3dm` files toward a flatter
+city-builder look, leaving the meshes untouched:
+
+```bash
+tools/stylize-tiles.py public/tiles/berlin3d --preview /tmp/look.png  # tune first
+tools/stylize-tiles.py public/tiles/berlin3d                          # then commit to it
+```
+
+Order matters. Downscale, then median filter (not blur — it has to keep building edges
+while killing grain), then **lift the shadows**, then saturate, then palette-quantize.
+
+The shadow lift is the step that is not obvious. Aerial shadows carry a strong blue cast,
+so saturating them directly turns every shaded wall electric blue — it reads as broken
+rather than stylized. Lifting the toe of the curve first lets the saturation act on
+midtones instead. Quantizing last matters too: do it before the filter and the smoothing
+smears the palette straight back into gradients.
+
+Side effect worth having: **162 MB → 103 MB**, since the textures shrink along with the
+detail.
 
 ### The OSM route, and why it was abandoned
 
