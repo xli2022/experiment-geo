@@ -45,6 +45,14 @@ def main() -> int:
     ap.add_argument("--lat", type=float, required=True, help="target latitude")
     ap.add_argument("--lon", type=float, required=True, help="target longitude")
     ap.add_argument("--height", type=float, default=40.0, help="target height (m)")
+    ap.add_argument(
+        "--radius",
+        type=float,
+        default=700.0,
+        help="metres around the target to fetch. A 3D Tiles client refines across "
+        "siblings, so descending a single path from the root never reaches the "
+        "detailed levels — the subtree has to be a neighbourhood, not a line.",
+    )
     ap.add_argument("--max-bytes", type=int, default=300_000_000)
     ap.add_argument("--max-depth", type=int, default=12)
     args = ap.parse_args()
@@ -101,7 +109,7 @@ def walk_node(
     if "transform" in node:
         xform = multiply(xform, node["transform"])
 
-    if not contains(node.get("boundingVolume"), target, xform):
+    if not intersects(node.get("boundingVolume"), target, args.radius, xform):
         state["skipped"] += 1
         return
 
@@ -220,33 +228,47 @@ def apply_vector(m, v):
     )
 
 
-def contains(bv: dict | None, point, xform=None) -> bool:
-    """Is the point inside this bounding volume? Unknown volumes are descended into."""
+def intersects(bv: dict | None, point, radius: float, xform=None) -> bool:
+    """
+    Does this bounding volume come within `radius` of the target?
+
+    Deliberately a sphere test rather than point containment. A 3D Tiles client
+    refines by comparing screen-space error across a tile's *siblings*, so a
+    subtree containing only the tiles directly above the target never supplies
+    enough of the tree for refinement to proceed — you get the coarse root
+    meshes and nothing else. Fetching a neighbourhood fixes that.
+    """
     if not bv:
         return True
     if "box" in bv:
         b = bv["box"]
         # Move the box into world space rather than inverting the transform.
-        cx, cy, cz = apply_point(xform, (b[0], b[1], b[2]))
-        d = (point[0] - cx, point[1] - cy, point[2] - cz)
-        # Three half-axis vectors; the point is inside if its projection onto
-        # each axis is within that axis' own length.
+        centre = apply_point(xform, (b[0], b[1], b[2]))
+        d = (point[0] - centre[0], point[1] - centre[1], point[2] - centre[2])
+        # Distance from the point to the box: project onto each half-axis,
+        # clamp to the box, and measure what's left over.
+        remainder = list(d)
         for i in (3, 6, 9):
             ax = apply_vector(xform, (b[i], b[i + 1], b[i + 2]))
             length2 = ax[0] ** 2 + ax[1] ** 2 + ax[2] ** 2
             if length2 == 0:
                 continue
-            proj = d[0] * ax[0] + d[1] * ax[1] + d[2] * ax[2]
-            if abs(proj) > length2:
-                return False
-        return True
+            t = (d[0] * ax[0] + d[1] * ax[1] + d[2] * ax[2]) / length2
+            t = max(-1.0, min(1.0, t))
+            for j in range(3):
+                remainder[j] -= t * ax[j]
+        return math.sqrt(sum(v * v for v in remainder)) <= radius
     if "region" in bv:
         w, s, e, n = bv["region"][:4]
         lat, lon = ecef_to_latlon(point)
-        return w <= math.radians(lon) <= e and s <= math.radians(lat) <= n
+        pad = math.degrees(radius / WGS84_A)
+        return (
+            math.degrees(w) - pad <= lon <= math.degrees(e) + pad
+            and math.degrees(s) - pad <= lat <= math.degrees(n) + pad
+        )
     if "sphere" in bv:
         cx, cy, cz = apply_point(xform, bv["sphere"][:3])
-        r = bv["sphere"][3]
+        r = bv["sphere"][3] + radius
         return (point[0] - cx) ** 2 + (point[1] - cy) ** 2 + (point[2] - cz) ** 2 <= r * r
     return True
 

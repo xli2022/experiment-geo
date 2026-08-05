@@ -15,3 +15,16 @@ export const ERROR_TARGET = Number(import.meta.env.VITE_ERROR_TARGET ?? 12);
 
 /** Starting camera height above the tileset centre, in metres. */
 export const START_ALTITUDE = 450;
+
+/**
+ * Optional point to place at the world origin, as "lat,lon".
+ *
+ * Needed when the tileset is a partial subtree of a city-wide one (see
+ * tools/fetch-3dtiles.py) — otherwise it re-centres on its own bounding
+ * sphere, which is the middle of the whole city rather than the part that was
+ * actually downloaded.
+ */
+const anchorEnv = import.meta.env.VITE_TILESET_ANCHOR;
+export const TILESET_ANCHOR = anchorEnv
+  ? (([lat, lon]) => ({ lat, lon }))(anchorEnv.split(',').map(Number) as [number, number])
+  : undefined;

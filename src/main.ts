@@ -4,7 +4,7 @@ import { FlyCamera } from './camera/FlyCamera';
 import { TilesetSource } from './world/TilesetSource';
 import { setupLighting } from './scene/lighting';
 import { Hud, formatDistance } from './ui/Hud';
-import { ERROR_TARGET, START_ALTITUDE, TILESET_URL } from './config';
+import { ERROR_TARGET, START_ALTITUDE, TILESET_ANCHOR, TILESET_URL } from './config';
 
 const viewer = new Viewer(document.body);
 const hud = new Hud();
@@ -15,6 +15,7 @@ const flyCamera = new FlyCamera(viewer.camera, viewer.canvas);
 
 const world = new TilesetSource(TILESET_URL, viewer.renderer, {
   errorTarget: ERROR_TARGET,
+  anchor: TILESET_ANCHOR,
   onReady: ({ origin, radius }) => {
     // The tileset recentres itself on its own bounding sphere, so the world
     // origin is its middle. Back off far enough to see the whole thing.

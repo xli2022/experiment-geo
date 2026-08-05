@@ -12,6 +12,15 @@ export interface TilesetSourceOptions {
   errorTarget?: number;
   /** Maximum tiles held in the LRU cache before eviction starts. */
   maxCachedTiles?: number;
+  /**
+   * Geodetic point (degrees) to place at the world origin.
+   *
+   * Without this the tileset re-centres on its own bounding sphere, which for a
+   * city-wide tileset is its geometric middle — tens of kilometres from
+   * wherever you actually downloaded detail, leaving the camera parked over
+   * empty space. Set it when using a partial subtree of a large tileset.
+   */
+  anchor?: { lat: number; lon: number; height?: number };
   /** Called once the root tileset is parsed and the world has been placed. */
   onReady?: (info: TilesetInfo) => void;
   onError?: (error: Error) => void;
@@ -108,10 +117,20 @@ export class TilesetSource implements WorldSource {
     if (!this.tiles.getBoundingSphere(tmpSphere)) return;
     this.placed = true;
 
-    const { lat, lon, height } = this.tiles.ellipsoid.getPositionToCartographic(
-      tmpSphere.center,
-      tmpCarto,
-    );
+    let lat: number;
+    let lon: number;
+    let height: number;
+
+    if (this.opts.anchor) {
+      lat = THREE.MathUtils.degToRad(this.opts.anchor.lat);
+      lon = THREE.MathUtils.degToRad(this.opts.anchor.lon);
+      height = this.opts.anchor.height ?? 0;
+    } else {
+      ({ lat, lon, height } = this.tiles.ellipsoid.getPositionToCartographic(
+        tmpSphere.center,
+        tmpCarto,
+      ));
+    }
 
     // ENU frame at the tileset centre, expressed in ECEF. Inverting it maps
     // ECEF into that local frame, putting the centre at the origin.
@@ -133,7 +152,9 @@ export class TilesetSource implements WorldSource {
     this.opts.onReady?.({
       // getPositionToCartographic returns radians; callers want degrees.
       origin: { lat: THREE.MathUtils.radToDeg(lat), lon: THREE.MathUtils.radToDeg(lon), height },
-      radius: tmpSphere.radius,
+      // With an explicit anchor the tileset's own radius is meaningless for
+      // framing — it describes the whole city, not the part that was fetched.
+      radius: this.opts.anchor ? 0 : tmpSphere.radius,
     });
   };
 
