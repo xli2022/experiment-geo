@@ -1,6 +1,8 @@
 name: Deploy to GitHub Pages
 
 on:
+  push:
+    branches: [master]
   workflow_dispatch:
 
 # Deploys via the Pages artifact rather than by committing dist/ to a branch.
@@ -30,10 +32,16 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-      # The tileset is not in the repo. Either bake it here (needs Java plus an
-      # OSM extract, and must finish inside the job timeout) or point the app at
-      # externally hosted tiles with VITE_TILESET_URL. Until one of those is
-      # wired up, this deploys the app shell only.
+      # The baked tileset is committed (see .gitignore for why), so the build
+      # output is self-contained and no bake runs here.
+      - name: Check the world is actually present
+        run: |
+          if [ ! -f dist/tiles/monaco/tileset.json ]; then
+            echo "::error::dist/tiles/monaco/tileset.json is missing — the deploy would publish an empty world"
+            exit 1
+          fi
+          echo "tileset: $(find dist/tiles -name '*.glb' | wc -l) tiles"
+
       - name: Check published size against the 1 GB Pages limit
         run: |
           SIZE=$(du -sb dist | cut -f1)

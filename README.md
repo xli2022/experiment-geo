@@ -20,7 +20,8 @@ npm install
 npm run dev
 ```
 
-The app needs a baked tileset to show anything. See **Baking a world** below.
+A baked world (Monaco) is committed, so this runs with nothing else to set up.
+See **Baking a world** below to build a different one.
 
 ```bash
 npm run typecheck   # tsc --noEmit
@@ -90,8 +91,18 @@ the last few MB.
 **LOD is the other cost lever.** LOD 4 did not finish within 6 minutes on 4 cores for an
 area this size; LOD 2 takes ~100 s. Start low.
 
-Baked tiles land in `public/tiles/<city>/` and are gitignored — they're build artifacts,
-and `tools/bake.sh` plus a pinned extract date is the source of truth.
+Baked tiles land in `public/tiles/<city>/` and **are committed**, because at ~37 MB they
+fit comfortably and that lets GitHub Pages deploy a working world straight from a push —
+no Java, no 478 MB download, no bake in CI. `tools/bake.sh` plus a pinned extract date
+remains the source of truth for regenerating them; re-bake when the world needs to change
+rather than casually, since each one adds a copy to git history.
+
+After baking a new world, generate its root tileset and point the app at it:
+
+```bash
+tools/make-root-tileset.py public/tiles/<city>
+# then set TILESET_URL in src/config.ts, or VITE_TILESET_URL at build time
+```
 
 ## Hosting
 

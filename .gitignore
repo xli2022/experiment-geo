@@ -3,10 +3,18 @@ dist/
 *.local
 .DS_Store
 
-# Baked 3D Tiles are build artifacts, not source. They are large, they change
-# wholesale on every re-bake, and committing them would grow history without
-# bound. tools/bake.sh plus a pinned extract is the source of truth.
-public/tiles/
+# Baked 3D Tiles ARE committed, deliberately.
+#
+# They are build artifacts and tools/bake.sh plus a pinned extract remains the
+# source of truth for regenerating them. But after compression the whole of
+# Monaco is ~37 MB, which is small enough to commit — and committing it is what
+# lets GitHub Pages deploy a working world straight from a push, with no Java,
+# no 478 MB OSM2World download, and no multi-minute bake in CI.
+#
+# The tradeoff: every re-bake adds another copy to history. Re-bake when the
+# world actually needs to change, not casually. If a future world gets large
+# enough that this hurts, move the tiles to Cloudflare R2 and point
+# VITE_TILESET_URL at it — that is the escape hatch the config was built for.
 
 # OSM2World distribution and OSM extracts — downloaded, not authored.
 vendor/
