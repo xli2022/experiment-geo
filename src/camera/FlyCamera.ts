@@ -72,11 +72,7 @@ export class FlyCamera {
       groundHeight: options.groundHeight ?? 0,
     };
 
-    // Adopt the camera's current orientation so enabling the controls doesn't
-    // snap the view somewhere else.
-    const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
-    this.yaw = this.targetYaw = euler.y;
-    this.pitch = this.targetPitch = clampPitch(euler.x);
+    this.syncFromCamera();
 
     canvas.addEventListener('click', this.requestLock);
     document.addEventListener('pointerlockchange', this.onLockChange);
@@ -88,6 +84,21 @@ export class FlyCamera {
 
   get isLocked(): boolean {
     return this.locked;
+  }
+
+  /**
+   * Adopt the camera's current orientation as the new target.
+   *
+   * Call this after moving or re-aiming the camera externally (e.g. framing the
+   * world once it loads). Without it, the next update() would immediately
+   * overwrite that orientation with whatever this controller was last holding,
+   * silently discarding a `lookAt`.
+   */
+  syncFromCamera(): void {
+    const euler = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ');
+    this.yaw = this.targetYaw = euler.y;
+    this.pitch = this.targetPitch = clampPitch(euler.x);
+    this.velocity.set(0, 0, 0);
   }
 
   /** Height above ground in metres. */

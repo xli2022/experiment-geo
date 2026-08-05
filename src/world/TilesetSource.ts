@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { TilesRenderer } from '3d-tiles-renderer';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import type { WorldSource } from './WorldSource';
 
 export interface TilesetSourceOptions {
@@ -16,7 +18,7 @@ export interface TilesetSourceOptions {
 }
 
 export interface TilesetInfo {
-  /** Geodetic position the world was recentred on. */
+  /** Geodetic position the world was recentred on, in **degrees**. */
   origin: { lat: number; lon: number; height: number };
   /** Radius of the tileset's bounding sphere, in metres. */
   radius: number;
@@ -39,6 +41,7 @@ const tmpCarto = { lat: 0, lon: 0, height: 0 };
 export class TilesetSource implements WorldSource {
   readonly tiles: TilesRenderer;
 
+  private readonly dracoLoader: DRACOLoader;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly opts: TilesetSourceOptions;
   private scene: THREE.Scene | null = null;
@@ -53,6 +56,20 @@ export class TilesetSource implements WorldSource {
     if (options.maxCachedTiles !== undefined) {
       this.tiles.lruCache.maxSize = options.maxCachedTiles;
     }
+
+    // Tiles are Draco-compressed by tools/optimize-tiles.sh (a ~26x saving, and
+    // the thing that makes the bake shippable at all), so the loader needs a
+    // decoder or every tile fails with "No DRACOLoader instance provided".
+    // The decoder is vendored into public/draco rather than pulled from a CDN,
+    // so the app has no third-party runtime dependency.
+    this.dracoLoader = new DRACOLoader();
+    this.dracoLoader.setDecoderPath(`${import.meta.env.BASE_URL}draco/`);
+
+    const gltfLoader = new GLTFLoader(this.tiles.manager);
+    gltfLoader.setDRACOLoader(this.dracoLoader);
+    // TilesRenderer looks these up as the literal strings 'path.gltf'/'path.glb'.
+    this.tiles.manager.addHandler(/\.gltf$/, gltfLoader);
+    this.tiles.manager.addHandler(/\.glb$/, gltfLoader);
 
     this.tiles.addEventListener('load-root-tileset', this.place);
     this.tiles.addEventListener('load-error', this.onLoadError);
@@ -78,6 +95,7 @@ export class TilesetSource implements WorldSource {
     this.tiles.removeEventListener('load-error', this.onLoadError);
     this.scene?.remove(this.tiles.group);
     this.tiles.dispose();
+    this.dracoLoader.dispose();
     this.scene = null;
   }
 
@@ -113,7 +131,8 @@ export class TilesetSource implements WorldSource {
     this.tiles.group.updateMatrixWorld(true);
 
     this.opts.onReady?.({
-      origin: { lat, lon, height },
+      // getPositionToCartographic returns radians; callers want degrees.
+      origin: { lat: THREE.MathUtils.radToDeg(lat), lon: THREE.MathUtils.radToDeg(lon), height },
       radius: tmpSphere.radius,
     });
   };

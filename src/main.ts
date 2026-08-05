@@ -21,6 +21,9 @@ const world = new TilesetSource(TILESET_URL, viewer.renderer, {
     const distance = Math.max(radius * 1.2, START_ALTITUDE);
     viewer.camera.position.set(0, distance * 0.6, distance);
     viewer.camera.lookAt(0, 0, 0);
+    // The controller holds its own orientation state, so it has to be told
+    // about the lookAt or it will overwrite it on the next frame.
+    flyCamera.syncFromCamera();
 
     hud.setOverlay(null);
     console.info(
