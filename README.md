@@ -58,15 +58,16 @@ unzip -q o2w.zip -d vendor/osm2world && rm o2w.zip
 
 # 2. An extract from https://download.geofabrik.de/
 mkdir -p vendor/extracts
-curl -L https://download.geofabrik.de/europe/monaco-latest.osm.pbf \
-     -o vendor/extracts/monaco.osm.pbf
+curl -L https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf \
+     -o vendor/extracts/berlin.osm.pbf
 
 # 3. Shrink the texture library — once, before the first bake
 pip install Pillow && tools/shrink-textures.py
 
 # 4. Bake, then compress
-tools/bake.sh monaco "43.7237,7.4090 43.7519,7.4398" 2
-tools/optimize-tiles.sh public/tiles/monaco
+tools/bake.sh berlin "52.5125,13.3845 52.5215,13.3995" 2
+tools/optimize-tiles.sh public/tiles/berlin
+tools/make-root-tileset.py public/tiles/berlin
 ```
 
 **Steps 3 and 4 are not optional.** OSM2World writes uncompressed glTF and embeds its 4K
