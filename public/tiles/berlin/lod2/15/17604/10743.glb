@@ -74,11 +74,11 @@
     {
       "buffer": 0,
       "byteOffset": 0,
-      "byteLength": 216318
+      "byteLength": 218189
     },
     {
       "buffer": 0,
-      "byteOffset": 216318,
+      "byteOffset": 218189,
       "byteLength": 54234
     }
   ],
@@ -109,7 +109,7 @@
   "buffers": [
     {
       "uri": "10743.glb.bin",
-      "byteLength": 270552
+      "byteLength": 272423
     }
   ],
   "materials": [

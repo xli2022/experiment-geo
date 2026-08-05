@@ -104,17 +104,17 @@
     {
       "buffer": 0,
       "byteOffset": 0,
-      "byteLength": 273799
+      "byteLength": 275507
     },
     {
       "buffer": 0,
-      "byteOffset": 273799,
+      "byteOffset": 275507,
       "byteLength": 1129
     },
     {
       "buffer": 0,
-      "byteOffset": 274928,
-      "byteLength": 80385
+      "byteOffset": 276636,
+      "byteLength": 80279
     }
   ],
   "samplers": [
@@ -144,7 +144,7 @@
   "buffers": [
     {
       "uri": "10745.glb.bin",
-      "byteLength": 355313
+      "byteLength": 356915
     }
   ],
   "materials": [

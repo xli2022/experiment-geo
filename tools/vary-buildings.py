@@ -61,9 +61,17 @@ ROOF_VARIANTS = (
     "#c98661",  # pale terracotta
 )
 
-# Walls need a much tighter spread than roofs. A roof is seen at an angle and
-# in pieces; walls are large flat areas filling the frame at street level, so
-# the same spread that reads as variety on roofs reads as blotchiness here.
+# Walls need a much tighter spread than roofs, and ship at half of even this
+# (see --wall-strength, which defaults to 0.5).
+#
+# The reason is that the variation is a *hash* — nothing about a building
+# decides its colour, so at full strength the differences read as arbitrary
+# rather than characterful. Rendering the same view at strength 0, 0.5 and 1
+# showed how little walls contribute from the air in any case: roofs carry
+# nearly all the visible variety, and walls only assert themselves at street
+# level, which is precisely where randomness is most obvious. Half keeps
+# adjacent buildings from merging without inviting the question of why one is
+# ochre and its neighbour is grey.
 WALL_BASE = "#e6dfd1"
 WALL_VARIANTS = (
     "#e6dfd1",  # the base cream
@@ -101,6 +109,12 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("Usage")[0].strip())
     ap.add_argument("tiles_dir")
     ap.add_argument(
+        "--wall-strength",
+        type=float,
+        default=0.5,
+        help="0 leaves walls uniform, 1 uses the full palette spread, values between blend",
+    )
+    ap.add_argument(
         "--weld",
         type=float,
         default=0.01,
@@ -112,10 +126,17 @@ def main() -> int:
     if not paths:
         return fail(f"no .glb under {args.tiles_dir}")
 
-    targets = [
-        (label, np.array(hex_to_linear(base)), np.array([hex_to_linear(v) for v in variants]))
-        for label, base, variants in TARGETS
-    ]
+    targets = []
+    for label, base, variants in TARGETS:
+        base_lin = np.array(hex_to_linear(base))
+        spread = np.array([hex_to_linear(v) for v in variants])
+        if label == "wall":
+            # Blend each variant toward the base colour. At 0 every wall keeps
+            # the base and the pass is a no-op; at 1 the palette is used as
+            # written. Interpolating in linear space keeps the midpoints from
+            # drifting dark the way an sRGB blend would.
+            spread = base_lin + (spread - base_lin) * args.wall_strength
+        targets.append((label, base_lin, spread))
 
     totals: dict[str, int] = {label: 0 for label, _, _ in TARGETS}
     total_tiles = 0
