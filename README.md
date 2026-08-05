@@ -8,8 +8,8 @@ city with realistic streets and buildings.
 | | |
 |---|---|
 | Platform | Web — TypeScript + Vite + three.js |
-| Geometry | Berlin's open photogrammetric mesh (OGC 3D Tiles) |
-| Look | Stylized — aerial imagery flattened toward a city-builder palette |
+| Geometry | OpenStreetMap, baked with [OSM2World](https://osm2world.org/) (OGC 3D Tiles) |
+| Colour | Berlin's open photogrammetric mesh, projected on as an orthophoto |
 | Streaming | [`3d-tiles-renderer`](https://github.com/NASA-AMMOS/3DTilesRendererJS) |
 | Game layer | None yet — a world viewer first |
 
@@ -62,11 +62,82 @@ other.
 
 ## The world
 
-Berlin publishes a **photogrammetric 3D mesh of the whole city as open data** —
-real aerial-survey imagery, under
-[dl-de/zero-2-0](https://www.govdata.de/dl-de/zero-2-0), which carries no restrictions
-at all. It is served as OGC 3D Tiles with `access-control-allow-origin: *`, so a browser
-reads it directly.
+The shipped world is a **hybrid**: geometry from OpenStreetMap, colour from Berlin's
+photogrammetric mesh. Neither source works alone.
+
+| | Geometry | Colour |
+|---|---|---|
+| OSM2World | clean — hard edges, real roof planes | none; ~0.4% of OSM buildings carry a material tag |
+| Photogrammetry | melted, blobby reconstruction | real aerial survey imagery |
+
+Taking the colour off one and draping it over the other gives buildings that are both
+recognisable *and* correctly coloured — orange roofs orange, parks green, the Spree
+blue — on geometry that still reads as architecture rather than melted wax.
+
+`public/tiles/berlin-hybrid/` is committed and is what `npm run dev` loads: 9 tiles over
+Mitte spanning 2233 m × 2233 m (5.0 km²), **14 MB published — 1.4% of the Pages budget**.
+
+**Known gap: the colour does not reach the edge of the geometry.** The ortho was captured
+at `--extent 1400`, so it covers 2.0 km² of the 5.0 km² the tiles span — roughly the
+middle 40%. Everything outside it samples transparent ortho and renders black, which is
+the dark band visible at the far edge when you fly out. Re-capturing at `--extent 2300`
+closes it; that needs the 162 MB mesh fetched again, so it has not been done.
+
+### Reproducing it
+
+Three steps, because the colour has to be rendered before it can be projected.
+
+```bash
+# 1. Bake the geometry from OSM  (see "Baking a world from OSM" below for setup)
+tools/bake.sh berlin "52.5125,13.3845 52.5215,13.3995" 2
+tools/optimize-tiles.sh public/tiles/berlin
+tools/make-root-tileset.py public/tiles/berlin
+
+# 2. Fetch the photogrammetric mesh and render it straight down into an orthophoto
+tools/fetch-3dtiles.py \
+  https://download-berlin3d.virtualcitymap.de/datasource-data/HOSTING-Berlin-DLPortal/Mesh_2025/tileset.json \
+  public/tiles/berlin3d --lat 52.5170 --lon 13.3889 --radius 600
+npx vite preview &        # capture renders through the app, against the mesh
+VITE_TILESET_URL=/experiment-geo/tiles/berlin3d/tileset.json npm run build
+CHROMIUM_PATH=... node tools/capture-ortho.mjs --size 4096 --extent 1400
+
+# 3. Project the orthophoto onto the OSM geometry
+tools/project-ortho.py public/tiles/berlin ortho.png ortho.json \
+  --wall-shade 0.6 --wall-quantize 10.0
+```
+
+Capture renders the mesh **through the app rather than rasterising it in Python** on
+purpose: the renderer already gets tile transforms, LOD selection and occlusion right,
+and any of those subtly wrong in a reimplementation stays invisible until the colours
+land on the wrong buildings.
+
+Three things the projection has to get right, all of which fail quietly:
+
+- **glTF is Y-up; 3D Tiles is Z-up**, and the spec has the *client* apply the conversion
+  between glTF content and the tile transform. Skip it and north silently swaps with
+  height — every UV collapses to a line and the texture renders as vertical smears.
+- **The orthophoto already contains baked sunlight**, so the material must be
+  `KHR_materials_unlit`. Lighting it a second time washes it out.
+- **glTF buffers carry trailing padding**, so a new accessor's offset must come from the
+  real buffer length rather than the extent of existing views, or the UVs are garbage.
+
+**Walls are the known compromise.** A top-down projection has nothing to say about a
+vertical surface, so it smears whatever is directly above down the facade.
+`--wall-shade` darkens steep faces to read as shadowed sides and `--wall-quantize` snaps
+their UVs to a 10 m grid so the smear is at least uniform. At flying altitude this is
+convincing; at street level it is not. Fixing it properly needs facade imagery, which
+the top-down mesh does not contain.
+
+The ortho ships as one shared `ortho.webp` referenced externally rather than embedded
+per tile, so all 9 tiles pull a single 1.3 MB download instead of carrying a copy each.
+The `ortho.png` beside it is the uncompressed intermediate — gitignored, never published.
+
+### The photogrammetric source
+
+Berlin publishes a **photogrammetric 3D mesh of the whole city as open data** — real
+aerial-survey imagery, under [dl-de/zero-2-0](https://www.govdata.de/dl-de/zero-2-0),
+which carries no restrictions at all. It is served as OGC 3D Tiles with
+`access-control-allow-origin: *`, so a browser reads it directly.
 
 `tools/fetch-3dtiles.py` downloads a bounded neighbourhood around a point for
 self-hosting (311 tiles / 162 MB around Mitte — 16% of the Pages budget):
@@ -90,59 +161,47 @@ Two things it has to get right, both of which fail silently otherwise:
 The same tool works against [PLATEAU](https://www.mlit.go.jp/plateau/en/) (~250 Japanese
 cities) and [Helsinki 3D](https://www.hel.fi/en/decision-making/information-on-helsinki/maps-and-geospatial-data/helsinki-3d).
 
-### Restyling the textures
+The fetched mesh is **not committed** — it is an intermediate the ortho capture consumes,
+and at 162 MB it would cost 16% of the Pages budget to publish something no longer
+shipped. Re-run the fetch when the world needs rebuilding.
 
-Raw photogrammetry is accurate but visually noisy — desaturated, grainy, and full of
-high-frequency detail that reads as mush from altitude and grime up close.
-`tools/stylize-tiles.py` rewrites the textures inside the `.b3dm` files toward a flatter
-city-builder look, leaving the meshes untouched:
+### Two routes that were tried and rejected
 
-```bash
-tools/stylize-tiles.py public/tiles/berlin3d --preview /tmp/look.png  # tune first
-tools/stylize-tiles.py public/tiles/berlin3d                          # then commit to it
-```
+Both are still in the tree, because the measurements are worth keeping.
 
-**"Less detail" means less variation, not less sharpness.** A city-builder render is
-*crisper* than a photograph — large flat areas of colour separated by hard edges.
-Downscaling and blurring produce the opposite, so the pipeline keeps full resolution and
-sharpens at the end:
+**Restyling the photogrammetry** (`tools/stylize-tiles.py`) rewrites the textures inside
+the `.b3dm` files toward a flatter city-builder look, leaving the meshes untouched.
+The pipeline is sound — bilateral filter at full resolution, shadow lift, saturate,
+palette-quantize, unsharp — and it is deliberately built around one finding:
 
-1. **Bilateral filter** — the load-bearing step. It weights neighbours by colour distance
-   as well as position, so roof averages with roof and road with road, but neither bleeds
-   across the boundary between them. A median or Gaussian blur softens both equally, which
-   is exactly the mush to avoid.
-2. **Lift the shadows** — aerial shadows carry a heavy blue cast, and saturating them
-   directly turns every shaded wall electric blue. It reads as broken, not stylized.
-3. Saturate and add contrast.
-4. **Palette-quantize** — after filtering, never before; do it first and the filter smears
-   the palette straight back into gradients.
-5. **Unsharp mask** — restores the crispness quantizing softens, and pushes past the
-   original.
+> **"Less detail" means less variation, not less sharpness.** A city-builder render is
+> *crisper* than a photograph — large flat areas of colour separated by hard edges.
+> Downscaling and blurring produce the opposite. The first attempt did exactly that and
+> came out blurrier than the original, which is the opposite of the goal.
 
-Cost: **162 MB → 191 MB**. Sharpening is expensive in JPEG — the edge halos are exactly
-what the codec is worst at — so the quality default is 78 rather than the 88 the look
-would otherwise want. Downscaling would claw all of it back and more, but it is the one
-lever that directly destroys the effect.
+It still doesn't work, for a reason no amount of filter tuning fixes: the *geometry* is
+melted. Photogrammetric buildings have no hard edges to preserve, so flattening the
+colour just makes the blobbiness more obvious. Cost was **162 MB → 191 MB** — sharpening
+is expensive in JPEG, since edge halos are what the codec handles worst.
 
-### The OSM route, and why it was abandoned
+**Baking from OSM alone** gives the opposite failure: clean geometry, no colour. Only
+~0.4% of OSM buildings carry a material or colour tag, so almost every building renders
+in one default plaster. Measured across 16 cities, Berlin Mitte was the sole outlier at
+71% material coverage — and OSM2World then throws a NullPointerException on Mitte's
+unusual `surface=` values, aborting whole tiles.
 
-The original pipeline baked geometry from OpenStreetMap with
-[OSM2World](https://osm2world.org/). It works and the tooling is still here
-(`tools/bake.sh`, `shrink-textures.py`, `optimize-tiles.sh`, `make-root-tileset.py`), but
-it cannot look real: only ~0.4% of OSM buildings carry a material or colour tag, so almost
-every building renders in one default plaster. Measured across 16 cities, Berlin Mitte was
-the sole outlier at 71% material coverage — and OSM2World then throws a
-NullPointerException on Mitte's unusual `surface=` values, aborting whole tiles.
+The hybrid exists because each route fails on exactly what the other has.
 
 Worth keeping in mind: **San Francisco has 71.7% height coverage** where Berlin's data is
-flat, so it remains the better choice if the priority ever shifts to skyline or once
-terrain lands.
+flat, so it is the better choice if the priority ever shifts to skyline or once terrain
+lands — but it has no open photogrammetric mesh, so the colour half of the hybrid would
+need another source.
 
 
-## Baking a world from OSM (the alternative route)
+## Baking a world from OSM
 
-Still supported, and the right choice if you need a city with no open photogrammetric
-mesh. It produces stylized geometry, not photographs.
+Step 1 of the hybrid, and on its own the right choice for a city with no open
+photogrammetric mesh — it produces clean untextured geometry rather than photographs.
 
 ```bash
 # 1. OSM2World -> vendor/osm2world/  (~478 MB, mostly its texture library)
@@ -198,6 +257,11 @@ tools/make-root-tileset.py public/tiles/<city>
 # then set TILESET_URL in src/config.ts, or VITE_TILESET_URL at build time
 ```
 
+OSM2World emits no root tileset of its own, and the per-tile bounding regions it writes
+are identical across tiles — `make-root-tileset.py` derives the true bounds from each
+tile's `z/x/y` path instead. Without it the client cannot tell the tiles apart spatially
+and culls almost everything.
+
 ## Hosting
 
 Built for GitHub Pages, whose **1 GB published-site limit is the binding constraint** on
@@ -214,14 +278,17 @@ If the tileset outgrows 1 GB, host it on Cloudflare R2 (zero egress fees) and se
 
 ## Data & licensing
 
-The shipped world is the 3D mesh © [Geoportal Berlin](https://daten.berlin.de/), under
-[dl-de/zero-2-0](https://www.govdata.de/dl-de/zero-2-0) — no restrictions, commercial use
-included.
+The shipped world derives from **two sources, and both licences apply to it**:
 
-The OSM route uses map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright)
-under ODbL, rendered with [OSM2World](https://osm2world.org/) (MIT, textures included).
-Note that **baked OSM geometry is a Derivative Database** rather than a Produced Work, so
-a published tileset built that way should itself be offered under ODbL — application code
-and original art are unaffected.
+- **Geometry** — map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright)
+  under **ODbL**, rendered with [OSM2World](https://osm2world.org/) (MIT, textures
+  included).
+- **Colour** — the 3D mesh © [Geoportal Berlin](https://daten.berlin.de/), under
+  [dl-de/zero-2-0](https://www.govdata.de/dl-de/zero-2-0), which carries no restrictions.
 
-Attribution is displayed in-app without requiring interaction, as both licences expect.
+Because the geometry half comes from OSM, **the published tileset is a Derivative
+Database rather than a Produced Work**, and is offered under ODbL. That is the binding
+constraint of the two — dl-de/zero-2-0 imposes nothing further. Rendered frames are a
+Produced Work, so application code and original art are unaffected.
+
+Attribution for both is displayed in-app without requiring interaction, as ODbL expects.
