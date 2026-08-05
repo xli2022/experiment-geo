@@ -1,0 +1,60 @@
+import * as THREE from 'three';
+import { Viewer } from './engine/Viewer';
+import { FlyCamera } from './camera/FlyCamera';
+import { TilesetSource } from './world/TilesetSource';
+import { setupLighting } from './scene/lighting';
+import { Hud, formatDistance } from './ui/Hud';
+import { ERROR_TARGET, START_ALTITUDE, TILESET_URL } from './config';
+
+const viewer = new Viewer(document.body);
+const hud = new Hud();
+
+setupLighting(viewer.scene, viewer.renderer);
+
+const flyCamera = new FlyCamera(viewer.camera, viewer.canvas);
+
+const world = new TilesetSource(TILESET_URL, viewer.renderer, {
+  errorTarget: ERROR_TARGET,
+  onReady: ({ origin, radius }) => {
+    // The tileset recentres itself on its own bounding sphere, so the world
+    // origin is its middle. Back off far enough to see the whole thing.
+    const distance = Math.max(radius * 1.2, START_ALTITUDE);
+    viewer.camera.position.set(0, distance * 0.6, distance);
+    viewer.camera.lookAt(0, 0, 0);
+
+    hud.setOverlay(null);
+    console.info(
+      `Tileset ready at ${origin.lat.toFixed(5)}, ${origin.lon.toFixed(5)} ` +
+        `(radius ${radius.toFixed(0)} m)`,
+    );
+  },
+  onError: (error) => {
+    console.error(error);
+    hud.setOverlay(`Could not load the world.\n${error.message}`);
+  },
+});
+
+world.attach(viewer.scene);
+hud.setOverlay('Loading the world…');
+
+viewer.onUpdate((dt) => {
+  flyCamera.update(dt);
+  world.update(viewer.camera, dt);
+
+  hud.update(dt, {
+    alt: formatDistance(flyCamera.altitude),
+    spd: `${flyCamera.speed.toFixed(0)} m/s`,
+    tiles: String(world.tiles.visibleTiles.size),
+    ...(flyCamera.isLocked ? {} : { '': 'click to fly · WASD + QE · shift' }),
+  });
+});
+
+viewer.start();
+
+// Expose for debugging from the console.
+declare global {
+  interface Window {
+    app?: { viewer: Viewer; world: TilesetSource; flyCamera: FlyCamera; THREE: typeof THREE };
+  }
+}
+window.app = { viewer, world, flyCamera, THREE };

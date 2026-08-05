@@ -1,0 +1,59 @@
+name: Deploy to GitHub Pages
+
+on:
+  workflow_dispatch:
+
+# Deploys via the Pages artifact rather than by committing dist/ to a branch.
+# The baked tileset is large and changes wholesale on every re-bake, so
+# committing it would grow repository history past the 1 GB limit within a
+# handful of iterations.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      # The tileset is not in the repo. Either bake it here (needs Java plus an
+      # OSM extract, and must finish inside the job timeout) or point the app at
+      # externally hosted tiles with VITE_TILESET_URL. Until one of those is
+      # wired up, this deploys the app shell only.
+      - name: Check published size against the 1 GB Pages limit
+        run: |
+          SIZE=$(du -sb dist | cut -f1)
+          LIMIT=$((1024 * 1024 * 1024))
+          echo "dist is $(du -sh dist | cut -f1) — $((SIZE * 100 / LIMIT))% of the 1 GB limit"
+          if [ "$SIZE" -gt "$LIMIT" ]; then
+            echo "::error::dist exceeds the 1 GB GitHub Pages limit"
+            exit 1
+          fi
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

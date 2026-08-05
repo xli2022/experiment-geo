@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>experiment-geo</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; overflow: hidden; background: #0b0f14; }
+      canvas { display: block; width: 100%; height: 100%; }
+
+      #hud {
+        position: fixed;
+        inset: auto 0 0 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 1rem;
+        padding: 0.75rem 1rem;
+        font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: rgba(255, 255, 255, 0.75);
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+        pointer-events: none;
+      }
+      #hud a { color: inherit; pointer-events: auto; }
+      #stats { white-space: pre; }
+
+      /* OSM attribution must be visible without interaction (ODbL). */
+      #attribution { text-align: right; opacity: 0.65; }
+
+      #overlay {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-content: center;
+        gap: 0.5rem;
+        text-align: center;
+        font: 14px/1.6 system-ui, sans-serif;
+        color: rgba(255, 255, 255, 0.85);
+        background: rgba(11, 15, 20, 0.6);
+        backdrop-filter: blur(2px);
+      }
+      #overlay[hidden] { display: none; }
+      #overlay kbd {
+        display: inline-block;
+        padding: 0.1em 0.4em;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 3px;
+        font: inherit;
+        font-size: 0.9em;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="overlay">
+      <strong>experiment-geo</strong>
+      <span id="overlay-msg">Loading…</span>
+    </div>
+
+    <div id="hud">
+      <div id="stats"></div>
+      <div id="attribution">
+        Map data ©
+        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener"
+          >OpenStreetMap contributors</a
+        >
+        · ODbL<br />
+        Geometry rendered with
+        <a href="https://osm2world.org/" target="_blank" rel="noopener">OSM2World</a>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

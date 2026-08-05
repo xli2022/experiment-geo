@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.local
+.DS_Store
+
+# Baked 3D Tiles are build artifacts, not source. They are large, they change
+# wholesale on every re-bake, and committing them would grow history without
+# bound. tools/bake.sh plus a pinned extract is the source of truth.
+public/tiles/
+
+# OSM2World distribution and OSM extracts — downloaded, not authored.
+vendor/
