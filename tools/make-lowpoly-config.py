@@ -16,7 +16,9 @@ That naming is the only reliable surface classifier available to us:
 
 So the palette is keyed on OSM2World's material names. This script reads the
 stock `standard.properties` for the material list and writes a self-contained
-config carrying one flat colour per material and no texture references at all.
+config carrying one flat colour per material, plus a single generated window
+texture — the one texture worth keeping, because nothing else separates a
+building from a coloured box.
 
 Doing it in config rather than post-processing the output matters: OSM2World
 embeds its 4K PBR texture sets into *every* tile, so a stock bake is ~98 MB per
@@ -224,7 +226,30 @@ GLOBALS = {
     "exportAlpha": "false",
     "treesPerSquareMeter": "0.02",
     "renderUnderground": "false",
+    # Windows are the one texture this pipeline keeps, and the reason is that
+    # nothing else separates a building from a coloured box. FLAT_TEXTURES
+    # paints them on rather than modelling them, which costs no geometry.
+    #
+    # FULL_GEOMETRY was measured and rejected: at LOD 2 it produced a
+    # byte-identical bake, and LOD 3 (which does add detail) costs +94%
+    # triangles for street furniture — benches, lamp posts, bus shelters —
+    # while leaving facades blank.
+    "windowImplementation": "FLAT_TEXTURES",
 }
+
+# The generated window texture, in metres of facade per tile of the image.
+# OSM2World's own Windows material uses 2.5 m, i.e. one window bay per storey,
+# and matching it keeps window spacing at a believable scale.
+WINDOW_TEXTURE_METRES = 2.5
+WINDOW_TEXTURE_PIXELS = 128
+WINDOW_TEXTURE_NAME = "lowpoly-windows.png"
+
+# Multiplied against the wall's palette colour, since the material is
+# `colorable`. White leaves the wall exactly as the palette specifies; the
+# window value darkens and cools it, so glass reads as glass without being
+# painted a colour that fights the wall it sits in.
+WINDOW_GLASS = (0x6F, 0x7D, 0x8C)
+WINDOW_FRAME = (0xF2, 0xF2, 0xF2)
 
 # Per-material flags worth carrying over from standard.properties. Everything
 # else there is texture plumbing.
@@ -236,6 +261,45 @@ GLOBALS = {
 KEEP_FLAGS = ("doubleSided",)
 
 MATERIAL_NAME = re.compile(r"^material_([A-Z_0-9]+)_", re.MULTILINE)
+
+
+def write_window_texture(config_dir: str) -> str:
+    """
+    Draw the tiling window texture and return the path to reference it by.
+
+    Deliberately hard-edged and two-tone. The whole reason the textured route
+    was abandoned earlier is that photographic facades read as mush from
+    altitude and grime up close; a flat window grid survives both because there
+    is no detail in it to lose. It is also tiny — about 1 KB — against the ~98 MB
+    per tile that OSM2World's stock 4K PBR sets cost.
+    """
+    from PIL import Image, ImageDraw
+
+    size = WINDOW_TEXTURE_PIXELS
+    image = Image.new("RGB", (size, size), (255, 255, 255))
+    draw = ImageDraw.Draw(image)
+
+    # One window bay, centred so the texture tiles without a seam down the
+    # middle of a window.
+    x0, x1 = round(size * 0.26), round(size * 0.74)
+    y0, y1 = round(size * 0.20), round(size * 0.76)
+
+    draw.rectangle([x0, y0, x1, y1], fill=WINDOW_FRAME)
+    inset = max(1, size // 64)
+    draw.rectangle([x0 + inset, y0 + inset, x1 - inset, y1 - inset], fill=WINDOW_GLASS)
+
+    # A single mullion. One divided pane reads as a window at a glance; more
+    # detail than this disappears at any altitude you actually fly at.
+    mid = (x0 + x1) // 2
+    draw.rectangle([mid - inset // 2, y0 + inset, mid + inset // 2, y1 - inset], fill=WINDOW_FRAME)
+
+    textures_dir = os.path.join(config_dir, "textures")
+    os.makedirs(textures_dir, exist_ok=True)
+    out = os.path.join(textures_dir, WINDOW_TEXTURE_NAME)
+    image.save(out, optimize=True)
+    # Relative to OSM2World's own directory, which is its working directory
+    # during a bake.
+    return f"./textures/{WINDOW_TEXTURE_NAME}"
 
 
 def main() -> int:
@@ -280,6 +344,19 @@ def main() -> int:
         lines.extend(sorted(set(flags)))
         lines.append("")
 
+    texture_rel = write_window_texture(os.path.dirname(os.path.abspath(args.output)))
+    lines.append("# --- windows ---")
+    lines.append("# The only texture in the pipeline. `colorable` multiplies it by the")
+    lines.append("# wall colour below, so windows darken whatever palette entry the wall has")
+    lines.append("# rather than being painted a fixed colour of their own.")
+    lines.append(f"material_BUILDING_WINDOWS_texture0_file = {texture_rel}")
+    lines.append(f"material_BUILDING_WINDOWS_texture0_width = {WINDOW_TEXTURE_METRES}")
+    lines.append(f"material_BUILDING_WINDOWS_texture0_height = {WINDOW_TEXTURE_METRES}")
+    lines.append(f"material_BUILDING_WINDOWS_texture0_widthPerEntity = {WINDOW_TEXTURE_METRES}")
+    lines.append(f"material_BUILDING_WINDOWS_texture0_heightPerEntity = {WINDOW_TEXTURE_METRES}")
+    lines.append("material_BUILDING_WINDOWS_texture0_colorable = true")
+    lines.append("")
+
     lines.append("# --- palette ---")
     for name in materials:
         colour = PALETTE.get(name, NEUTRAL)
@@ -292,7 +369,7 @@ def main() -> int:
         fh.write("\n".join(lines))
 
     print(f"Wrote {args.output}")
-    print(f"  {len(materials)} materials, {len(flags)} flags carried, no textures")
+    print(f"  {len(materials)} materials, {len(flags)} flags carried, 1 window texture")
     if missing:
         print(f"  {len(missing)} without a palette entry, using {NEUTRAL}: {', '.join(missing)}")
     return 0

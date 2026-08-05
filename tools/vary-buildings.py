@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Give each roof its own colour, so a low-poly skyline is not one flat sheet.
+Give each building its own roof and wall colour, so a low-poly city is not one
+flat sheet.
 
 Why this exists
 ---------------
@@ -29,7 +30,7 @@ Run this on the raw bake, before tools/optimize-tiles.sh — Draco-compressed
 accessors have no readable buffer view.
 
 Usage:
-    tools/vary-roofs.py public/tiles/berlin
+    tools/vary-buildings.py public/tiles/berlin
 """
 
 from __future__ import annotations
@@ -58,6 +59,27 @@ ROOF_VARIANTS = (
     "#8f6157",  # weathered brown
     "#a5745f",  # sandy brown
     "#c98661",  # pale terracotta
+)
+
+# Walls need a much tighter spread than roofs. A roof is seen at an angle and
+# in pieces; walls are large flat areas filling the frame at street level, so
+# the same spread that reads as variety on roofs reads as blotchiness here.
+WALL_BASE = "#e6dfd1"
+WALL_VARIANTS = (
+    "#e6dfd1",  # the base cream
+    "#d6cdb8",  # sand
+    "#e4e1dd",  # cool white
+    "#cdc2ad",  # taupe
+    "#dbd1bc",  # warm stone
+    "#c7c1b6",  # grey
+    "#eee4cd",  # pale ochre
+    "#d0ccc4",  # pale slate
+)
+
+# (label, base colour, variants). Order matters only for reporting.
+TARGETS = (
+    ("roof", ROOF_BASE, ROOF_VARIANTS),
+    ("wall", WALL_BASE, WALL_VARIANTS),
 )
 
 # How close a vertex colour must be to ROOF_BASE (in linear space, per channel)
@@ -90,24 +112,29 @@ def main() -> int:
     if not paths:
         return fail(f"no .glb under {args.tiles_dir}")
 
-    base = np.array(hex_to_linear(ROOF_BASE))
-    variants = np.array([hex_to_linear(v) for v in ROOF_VARIANTS])
+    targets = [
+        (label, np.array(hex_to_linear(base)), np.array([hex_to_linear(v) for v in variants]))
+        for label, base, variants in TARGETS
+    ]
 
-    total_roofs = 0
+    totals: dict[str, int] = {label: 0 for label, _, _ in TARGETS}
     total_tiles = 0
     for path in paths:
-        n = process(path, base, variants, args.weld)
-        if n is None:
+        counts = process(path, targets, args.weld)
+        if counts is None:
             continue
-        total_roofs += n
+        for label, n in counts.items():
+            totals[label] += n
         total_tiles += 1
-        print(f"  {os.path.relpath(path, args.tiles_dir)}: {n} roofs")
+        summary = ", ".join(f"{n} {label}s" for label, n in counts.items())
+        print(f"  {os.path.relpath(path, args.tiles_dir)}: {summary}")
 
-    print(f"Varied {total_roofs} roofs across {total_tiles} tiles")
+    parts = ", ".join(f"{n} {label}s" for label, n in totals.items())
+    print(f"Varied {parts} across {total_tiles} tiles")
     return 0
 
 
-def process(path: str, base: np.ndarray, variants: np.ndarray, weld: float) -> int | None:
+def process(path: str, targets: list, weld: float) -> dict[str, int] | None:
     with open(path, "rb") as fh:
         data = fh.read()
     if data[:4] != b"glTF":
@@ -118,7 +145,8 @@ def process(path: str, base: np.ndarray, variants: np.ndarray, weld: float) -> i
     bin_off = 20 + json_len + 8
     binary = bytearray(data[bin_off:])
 
-    roofs = 0
+    counts = {label: 0 for label, _, _ in targets}
+    changed = False
     for mesh in gltf.get("meshes", []):
         for prim in mesh.get("primitives", []):
             attrs = prim.get("attributes", {})
@@ -133,32 +161,38 @@ def process(path: str, base: np.ndarray, variants: np.ndarray, weld: float) -> i
             if tris is None:
                 continue
 
-            is_roof_vertex = np.all(np.abs(colors - base) < MATCH_EPS, axis=1)
-            roof_tris = tris[np.all(is_roof_vertex[tris], axis=1)]
-            if not len(roof_tris):
-                continue
+            for name, base, variants in targets:
+                matched = np.all(np.abs(colors - base) < MATCH_EPS, axis=1)
+                target_tris = tris[np.all(matched[tris], axis=1)]
+                if not len(target_tris):
+                    continue
 
-            labels = components(positions, roof_tris, weld)
-            if labels is None:
-                continue
+                labels = components(positions, target_tris, weld)
+                if labels is None:
+                    continue
 
-            # Hash each component's centroid to a variant. Quantised to 10 cm so
-            # float noise between runs cannot flip a building to another colour.
-            for label in np.unique(labels):
-                verts = np.unique(roof_tris[labels == label])
-                centroid = positions[verts].mean(axis=0)
-                key = tuple(int(round(v * 10)) for v in centroid)
-                idx = stable_hash(key) % len(variants)
-                colors[verts] = variants[idx]
-                roofs += 1
+                # Hash each component's centroid to a variant. Quantised to 10 cm
+                # so float noise between runs cannot flip a building to another
+                # colour.
+                for label in np.unique(labels):
+                    verts = np.unique(target_tris[labels == label])
+                    centroid = positions[verts].mean(axis=0)
+                    key = tuple(int(round(v * 10)) for v in centroid)
+                    # Offset the hash per target so a building's wall and roof
+                    # do not land on the same index in their palettes, which
+                    # would correlate them into visible stripes across the city.
+                    idx = (stable_hash(key) + len(name)) % len(variants)
+                    colors[verts] = variants[idx]
+                    counts[name] += 1
+                    changed = True
 
             write_vec3(binary, c_off, colors)
 
-    if not roofs:
-        return 0
+    if not changed:
+        return counts
 
     rebuild(path, data, json_len, binary)
-    return roofs
+    return counts
 
 
 def stable_hash(key: tuple[int, int, int]) -> int:

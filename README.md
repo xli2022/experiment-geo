@@ -139,20 +139,37 @@ curl -L https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf \
 tools/make-lowpoly-config.py vendor/osm2world/standard.properties \
     -o vendor/osm2world/lowpoly.properties
 
-# 4. Bake, vary the roofs, compress, and write the root tileset
+# 4. Bake, vary the buildings, compress, and write the root tileset
 tools/bake.sh berlin "52.4970,13.3560 52.5370,13.4220" 2 15
-tools/vary-roofs.py public/tiles/berlin
+tools/vary-buildings.py public/tiles/berlin
 tools/optimize-tiles.sh public/tiles/berlin --no-simplify
 tools/make-root-tileset.py public/tiles/berlin
 ```
 
-`vary-roofs.py` runs on the raw bake, before compression — Draco-compressed
+`vary-buildings.py` runs on the raw bake, before compression — Draco-compressed
 accessors have no readable buffer view. OSM2World assigns materials per *feature
 type*, so every untagged roof lands on one shade of terracotta and the skyline reads as a
 single flat sheet. The tool finds connected components among roof-coloured triangles and
 gives each one a palette variant chosen by a stable hash of its centroid, so a building
-keeps its colour across re-bakes. Components are joined only through roof triangles, never
-through walls, which is what stops a Berlin terrace collapsing into one colour.
+keeps its colour across re-bakes. Components are joined only within one material, never
+across, which is what stops a Berlin terrace collapsing into a single colour.
+
+It does the same for walls. The wall spread is deliberately tighter than the roof
+spread — a roof is seen at an angle and in pieces, while walls are large flat areas
+filling the frame at street level, so the same spread that reads as variety on roofs
+reads as blotchiness on walls.
+
+**Windows are the one texture this pipeline keeps.** `make-lowpoly-config.py` generates a
+~300 byte tiling PNG — flat, hard-edged, one bay per 2.5 m storey — and points
+`BUILDING_WINDOWS` at it with `colorable = true`, so the texture multiplies against
+whatever wall colour the building was given rather than painting a fixed colour of its own.
+Measured cost: **88,483 triangles against 89,251 without**, i.e. none, because the windows
+are painted rather than modelled.
+
+Two alternatives were measured and rejected. `windowImplementation = FULL_GEOMETRY`
+produced a *byte-identical* bake at LOD 2. LOD 3 does add detail, but it is street
+furniture — benches, lamp posts, bus shelters — at **+94% triangles**, with facades left
+blank.
 
 Note `--no-simplify`: `optimize-tiles.sh` otherwise runs a lossy geometry simplify pass,
 and crisp edges are the entire point of this style. The tiles are small enough without it.
