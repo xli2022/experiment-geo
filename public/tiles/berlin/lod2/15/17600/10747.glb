@@ -6,6 +6,36 @@
   "accessors": [
     {
       "type": "SCALAR",
+      "componentType": 5125,
+      "count": 1000110
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 711071
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 711071,
+      "max": [
+        375.1470031738281,
+        34,
+        375.1319885253906
+      ],
+      "min": [
+        -375.1470031738281,
+        -3,
+        -375.1610107421875
+      ]
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 711071
+    },
+    {
+      "type": "SCALAR",
       "componentType": 5123,
       "count": 78
     },
@@ -36,60 +66,102 @@
     },
     {
       "type": "SCALAR",
-      "componentType": 5125,
-      "count": 1000479
+      "componentType": 5123,
+      "count": 369
     },
     {
       "type": "VEC3",
       "componentType": 5126,
-      "count": 711394
+      "count": 321
     },
     {
       "type": "VEC3",
       "componentType": 5126,
-      "count": 711394,
+      "count": 321,
       "max": [
-        375.1470031738281,
-        34,
+        205.60968017578125,
+        10,
         375.1319885253906
       ],
       "min": [
         -375.1470031738281,
         -3.0999999046325684,
-        -375.1610107421875
+        -209.3520050048828
       ]
+    },
+    {
+      "type": "VEC2",
+      "componentType": 5126,
+      "count": 321
     },
     {
       "type": "VEC3",
       "componentType": 5126,
-      "count": 711394
+      "count": 321
     }
   ],
   "bufferViews": [
     {
       "buffer": 0,
       "byteOffset": 0,
+      "byteLength": 1035655
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1035655,
       "byteLength": 319
     },
     {
       "buffer": 0,
-      "byteOffset": 319,
-      "byteLength": 1036019
+      "byteOffset": 1035974,
+      "byteLength": 1332
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987,
+      "wrapS": 10497,
+      "wrapT": 10497
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "extensions": {
+        "EXT_texture_webp": {
+          "source": 0
+        }
+      }
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/webp",
+      "uri": "baseColor.webp"
     }
   ],
   "buffers": [
     {
       "uri": "10747.glb.bin",
-      "byteLength": 1036338
+      "byteLength": 1037306
     }
   ],
   "materials": [
+    {
+      "pbrMetallicRoughness": {}
+    },
     {
       "doubleSided": true,
       "pbrMetallicRoughness": {}
     },
     {
-      "pbrMetallicRoughness": {}
+      "name": "lowpoly-windows",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0
+        }
+      }
     }
   ],
   "meshes": [
@@ -140,6 +212,32 @@
           }
         }
       ]
+    },
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "COLOR_0": 9,
+            "POSITION": 10,
+            "TEXCOORD_0": 11,
+            "NORMAL": 12
+          },
+          "mode": 4,
+          "material": 2,
+          "indices": 8,
+          "extensions": {
+            "KHR_draco_mesh_compression": {
+              "bufferView": 2,
+              "attributes": {
+                "COLOR_0": 0,
+                "POSITION": 1,
+                "TEXCOORD_0": 2,
+                "NORMAL": 3
+              }
+            }
+          }
+        }
+      ]
     }
   ],
   "nodes": [
@@ -148,21 +246,27 @@
     },
     {
       "mesh": 1
+    },
+    {
+      "mesh": 2
     }
   ],
   "scenes": [
     {
       "nodes": [
         0,
-        1
+        1,
+        2
       ]
     }
   ],
   "scene": 0,
   "extensionsUsed": [
+    "EXT_texture_webp",
     "KHR_draco_mesh_compression"
   ],
   "extensionsRequired": [
+    "EXT_texture_webp",
     "KHR_draco_mesh_compression"
   ]
 }

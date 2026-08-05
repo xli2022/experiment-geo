@@ -6,36 +6,6 @@
   "accessors": [
     {
       "type": "SCALAR",
-      "componentType": 5125,
-      "count": 172857
-    },
-    {
-      "type": "VEC3",
-      "componentType": 5126,
-      "count": 127832
-    },
-    {
-      "type": "VEC3",
-      "componentType": 5126,
-      "count": 127832,
-      "max": [
-        375.2045593261719,
-        81.5,
-        375.18798828125
-      ],
-      "min": [
-        -375.2040100097656,
-        0,
-        -375.2170104980469
-      ]
-    },
-    {
-      "type": "VEC3",
-      "componentType": 5126,
-      "count": 127832
-    },
-    {
-      "type": "SCALAR",
       "componentType": 5123,
       "count": 81
     },
@@ -63,33 +33,135 @@
       "type": "VEC3",
       "componentType": 5126,
       "count": 57
+    },
+    {
+      "type": "SCALAR",
+      "componentType": 5125,
+      "count": 158331
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 115478
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 115478,
+      "max": [
+        375.2045593261719,
+        81.5,
+        375.18798828125
+      ],
+      "min": [
+        -375.2040100097656,
+        0,
+        -375.2170104980469
+      ]
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 115478
+    },
+    {
+      "type": "SCALAR",
+      "componentType": 5123,
+      "count": 14529
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 12363
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 12363,
+      "max": [
+        375.2040100097656,
+        81.5,
+        375.18798828125
+      ],
+      "min": [
+        -375.2040100097656,
+        0,
+        -375.2170104980469
+      ]
+    },
+    {
+      "type": "VEC2",
+      "componentType": 5126,
+      "count": 12363
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 12363
     }
   ],
   "bufferViews": [
     {
       "buffer": 0,
       "byteOffset": 0,
-      "byteLength": 184325
+      "byteLength": 346
     },
     {
       "buffer": 0,
-      "byteOffset": 184325,
-      "byteLength": 346
+      "byteOffset": 346,
+      "byteLength": 170082
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 170428,
+      "byteLength": 34355
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987,
+      "wrapS": 10497,
+      "wrapT": 10497
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "extensions": {
+        "EXT_texture_webp": {
+          "source": 0
+        }
+      }
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/webp",
+      "uri": "baseColor.webp"
     }
   ],
   "buffers": [
     {
       "uri": "10748.glb.bin",
-      "byteLength": 184671
+      "byteLength": 204783
     }
   ],
   "materials": [
     {
+      "doubleSided": true,
       "pbrMetallicRoughness": {}
     },
     {
-      "doubleSided": true,
       "pbrMetallicRoughness": {}
+    },
+    {
+      "name": "lowpoly-windows",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0
+        }
+      }
     }
   ],
   "meshes": [
@@ -140,6 +212,32 @@
           }
         }
       ]
+    },
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "COLOR_0": 9,
+            "POSITION": 10,
+            "TEXCOORD_0": 11,
+            "NORMAL": 12
+          },
+          "mode": 4,
+          "material": 2,
+          "indices": 8,
+          "extensions": {
+            "KHR_draco_mesh_compression": {
+              "bufferView": 2,
+              "attributes": {
+                "COLOR_0": 0,
+                "POSITION": 1,
+                "TEXCOORD_0": 2,
+                "NORMAL": 3
+              }
+            }
+          }
+        }
+      ]
     }
   ],
   "nodes": [
@@ -148,21 +246,27 @@
     },
     {
       "mesh": 1
+    },
+    {
+      "mesh": 2
     }
   ],
   "scenes": [
     {
       "nodes": [
         0,
-        1
+        1,
+        2
       ]
     }
   ],
   "scene": 0,
   "extensionsUsed": [
+    "EXT_texture_webp",
     "KHR_draco_mesh_compression"
   ],
   "extensionsRequired": [
+    "EXT_texture_webp",
     "KHR_draco_mesh_compression"
   ]
 }
