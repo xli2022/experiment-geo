@@ -47,6 +47,12 @@ CHUNK_BIN = 0x004E4942
 COMPONENT = {5120: ("b", 1), 5121: ("B", 1), 5122: ("h", 2), 5123: ("H", 2), 5125: ("I", 4), 5126: ("f", 4)}
 NUM_COMPONENTS = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4, "MAT4": 16}
 
+# glTF is Y-up; 3D Tiles works in Z-up, and the spec has the *client* apply this
+# between the glTF content and the tile transform (asset.gltfUpAxis, default Y).
+# Skipping it does not fail loudly — it silently swaps north with height, so
+# every UV collapses to a line and the texture renders as vertical smears.
+YUP_TO_ZUP = [1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1]
+
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("Usage")[0].strip())
@@ -56,8 +62,19 @@ def main() -> int:
     ap.add_argument(
         "--wall-shade",
         type=float,
-        default=0.72,
+        default=0.6,
         help="multiplier applied to near-vertical faces, 1 = off",
+    )
+    ap.add_argument(
+        "--wall-quantize",
+        type=float,
+        default=10.0,
+        help=(
+            "snap wall UVs to a grid this many metres across, 0 = off. A vertical "
+            "face samples a one-pixel-wide line of the ortho and stretches it down "
+            "the whole facade, which reads as streaks; snapping gives each face a "
+            "flat panel of colour instead."
+        ),
     )
     args = ap.parse_args()
 
@@ -81,6 +98,9 @@ def main() -> int:
     shutil.copy(args.ortho_png, os.path.join(args.tiles_dir, ortho_name))
 
     transforms = collect_transforms(args.tiles_dir)
+    up_axis = read_up_axis(args.tiles_dir)
+    if up_axis != "Y":
+        print(f"  tileset declares gltfUpAxis={up_axis}; skipping the Y-up correction")
     files = sorted(
         os.path.join(r, f)
         for r, _, fs in os.walk(args.tiles_dir)
@@ -98,7 +118,9 @@ def main() -> int:
         depth = rel.count("/")
         uri = "../" * depth + ortho_name
         try:
-            if project_file(path, bounds, to_local, xform, uri, args.wall_shade):
+            if project_file(
+                path, bounds, to_local, xform, uri, args.wall_shade, up_axis, args.wall_quantize
+            ):
                 done += 1
             else:
                 skipped += 1
@@ -146,6 +168,14 @@ def collect_transforms(tiles_dir: str) -> dict[str, list[float]]:
     return out
 
 
+def read_up_axis(tiles_dir: str) -> str:
+    try:
+        with open(os.path.join(tiles_dir, "tileset.json"), encoding="utf-8") as fh:
+            return json.load(fh).get("asset", {}).get("gltfUpAxis", "Y").upper()
+    except (OSError, ValueError):
+        return "Y"
+
+
 def project_file(
     path: str,
     bounds: dict,
@@ -153,6 +183,8 @@ def project_file(
     xform: list[float] | None,
     ortho_uri: str,
     wall_shade: float,
+    up_axis: str = "Y",
+    wall_quantize: float = 0.0,
 ) -> bool:
     data = open(path, "rb").read()
     if data[:4] == b"b3dm":
@@ -162,7 +194,9 @@ def project_file(
     else:
         prefix, glb = b"", data
 
-    new_glb = project_glb(glb, bounds, to_local, xform, ortho_uri, wall_shade)
+    new_glb = project_glb(
+        glb, bounds, to_local, xform, ortho_uri, wall_shade, up_axis, wall_quantize
+    )
     if new_glb is None:
         return False
 
@@ -182,6 +216,8 @@ def project_glb(
     xform: list[float] | None,
     ortho_uri: str,
     wall_shade: float,
+    up_axis: str = "Y",
+    wall_quantize: float = 0.0,
 ) -> bytes | None:
     magic, _, total = struct.unpack("<III", glb[:12])
     if magic != GLB_MAGIC:
@@ -205,44 +241,60 @@ def project_glb(
     span_z = bounds["maxZ"] - bounds["minZ"]
 
     extra_views: list[bytes] = []
+    bin_base = len(binary)
     for mesh_index, mesh in enumerate(gltf["meshes"]):
         model = node_matrices.get(mesh_index)
-        full = multiply(xform, model) if xform is not None else model
+        chain = multiply(YUP_TO_ZUP, model) if up_axis == "Y" else model
+        full = multiply(xform, chain) if xform is not None else chain
 
         for prim in mesh.get("primitives", []):
             pos_index = prim["attributes"].get("POSITION")
             if pos_index is None:
                 continue
-            positions = read_accessor(gltf, binary, pos_index)
+            positions = list(read_accessor(gltf, binary, pos_index))
+
+            normals_index = prim["attributes"].get("NORMAL")
+            normals = (
+                list(read_accessor(gltf, binary, normals_index))
+                if normals_index is not None
+                else None
+            )
 
             uvs = bytearray()
             colors = bytearray()
-            for px, py, pz in positions:
-                wx, wy, wz = apply_point(full, (px, py, pz)) if full else (px, py, pz)
-                lx, ly, lz = apply_point(to_local, (wx, wy, wz))
+            for vi, (px, py, pz) in enumerate(positions):
+                world = apply_point(full, (px, py, pz)) if full else (px, py, pz)
+                lx, ly, _lz = apply_point(to_local, world)
+
+                # On a near-vertical face the horizontal position barely varies,
+                # so the facade stretches a sliver of the ortho over its full
+                # height. Snapping to a grid turns that into flat panels.
+                if wall_quantize > 0 and normals is not None:
+                    ny = normals[vi][1]
+                    if abs(ny) < 0.5:
+                        lx = round(lx / wall_quantize) * wall_quantize
+                        ly = round(ly / wall_quantize) * wall_quantize
                 # Local ENU is Z-up; the renderer and the ortho are Y-up with
                 # north at -z, so east->x and north->-z.
                 u = (lx - bounds["minX"]) / span_x
                 v = (-ly - bounds["minZ"]) / span_z
                 uvs += struct.pack("<ff", clamp01(u), clamp01(v))
-                del ly, lz
             # Shade steep faces; a top-down projection has nothing true to say
             # about a wall, so make it read as a shadowed side instead.
             shade = wall_shade
-            normals = prim["attributes"].get("NORMAL")
             if normals is not None and shade < 1.0:
-                for nx, ny, nz in read_accessor(gltf, binary, normals):
-                    up = abs(ny)
-                    f = shade + (1.0 - shade) * up
+                for _nx, ny, _nz in normals:
+                    # ny is the up component in the mesh's own frame; OSM2World
+                    # emits Y-up, so |ny| ~ 1 on roofs and ~ 0 on walls.
+                    f = shade + (1.0 - shade) * abs(ny)
                     colors += struct.pack("<fff", f, f, f)
-                    del nx, nz
 
             prim["attributes"]["TEXCOORD_0"] = add_accessor(
-                gltf, extra_views, bytes(uvs), len(positions), "VEC2"
+                gltf, extra_views, bin_base, bytes(uvs), len(positions), "VEC2"
             )
             if colors:
                 prim["attributes"]["COLOR_0"] = add_accessor(
-                    gltf, extra_views, bytes(colors), len(positions), "VEC3"
+                    gltf, extra_views, bin_base, bytes(colors), len(positions), "VEC3"
                 )
             prim["material"] = 0
 
@@ -250,6 +302,11 @@ def project_glb(
     gltf["images"] = [{"uri": ortho_uri}]
     gltf["samplers"] = [{"magFilter": 9729, "minFilter": 9987, "wrapS": 33071, "wrapT": 33071}]
     gltf["textures"] = [{"source": 0, "sampler": 0}]
+    # Unlit. The orthophoto already contains real sunlight and shadow, so
+    # letting the scene light it again doubles the exposure and washes the whole
+    # city out. KHR_materials_unlit shows the captured colour exactly, which is
+    # what a projected photograph wants; the wall shading still applies because
+    # COLOR_0 multiplies base colour under unlit too.
     gltf["materials"] = [
         {
             "name": "ortho",
@@ -259,10 +316,16 @@ def project_glb(
                 "roughnessFactor": 1.0,
             },
             "doubleSided": True,
+            "extensions": {"KHR_materials_unlit": {}},
         }
     ]
+    used = set(gltf.get("extensionsUsed", []))
+    used.add("KHR_materials_unlit")
+    gltf["extensionsUsed"] = sorted(used)
 
-    # Append the new buffer views to the end of the existing binary chunk.
+    # Append starting at align4(bin_base), matching what add_accessor recorded.
+    while len(binary) < align4(bin_base):
+        binary.append(0)
     for payload in extra_views:
         while len(binary) % 4:
             binary.append(0)
@@ -285,21 +348,19 @@ def project_glb(
     return struct.pack("<III", GLB_MAGIC, 2, 12 + len(body)) + body
 
 
-def add_accessor(gltf, extra_views, payload: bytes, count: int, kind: str) -> int:
-    """Register a new bufferView + accessor whose data is appended later."""
-    offset = gltf.setdefault("_pending", 0)
-    del offset
+def add_accessor(gltf, extra_views, base: int, payload: bytes, count: int, kind: str) -> int:
+    """
+    Register a bufferView + accessor for data appended after `base`.
+
+    `base` must be the real length of the binary chunk, not the extent of the
+    existing views — a glTF buffer can carry trailing padding, and deriving the
+    offset from the views instead put every appended attribute a few bytes out.
+    Garbage UVs render as smeared texture rather than an obvious failure, so
+    this is worth getting exactly right.
+    """
     views = gltf.setdefault("bufferViews", [])
-    # Offsets are patched once all payloads are known; record the running total.
-    running = sum(align4(len(p)) for p in extra_views)
-    base = gltf.setdefault("_binLen", None)
-    if base is None:
-        base = max(
-            (v.get("byteOffset", 0) + v["byteLength"] for v in views),
-            default=0,
-        )
-        gltf["_binLen"] = base
-    views.append({"buffer": 0, "byteOffset": align4(base) + running, "byteLength": len(payload)})
+    offset = align4(base) + sum(align4(len(p)) for p in extra_views)
+    views.append({"buffer": 0, "byteOffset": offset, "byteLength": len(payload)})
     extra_views.append(payload)
     gltf.setdefault("accessors", []).append(
         {"bufferView": len(views) - 1, "componentType": 5126, "count": count, "type": kind}
