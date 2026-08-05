@@ -56,6 +56,8 @@ def main() -> int:
     visit(args.url, args.url, args.out_dir, target, 0, args, state, None)
 
     print()
+    pruned = prune_all(args.out_dir)
+    print(f"Pruned {pruned} dangling references to tiles outside the subtree")
     print(f"Fetched {state['tiles']} content tiles + {state['json']} sub-tilesets")
     print(f"  {state['bytes'] / 1024 / 1024:.1f} MB into {args.out_dir}")
     print(f"  {state['skipped']} branches skipped (outside target)")
@@ -125,6 +127,62 @@ def walk_node(
         if state["bytes"] >= args.max_bytes:
             return
         walk_node(child, base_url, root_url, out_dir, target, depth + 1, args, state, xform)
+
+
+def prune_all(out_dir: str) -> int:
+    """
+    Drop references to tiles we didn't download.
+
+    A partial subtree still carries the original tileset's full child lists, so
+    the renderer happily requests siblings that were never fetched. Served from
+    a static host with an SPA fallback those 404s come back as HTML, and the
+    loader dies on `Content type "<!do" not supported` rather than skipping the
+    tile — one missing sibling takes down the whole world.
+    """
+    removed = 0
+    for dirpath, _dirs, files in os.walk(out_dir):
+        for name in files:
+            if not name.endswith(".json"):
+                continue
+            path = os.path.join(dirpath, name)
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    doc = json.load(fh)
+            except (OSError, ValueError):
+                continue
+            if "root" not in doc:
+                continue
+            removed += prune_node(doc["root"], dirpath)
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(doc, fh, separators=(",", ":"))
+    return removed
+
+
+def prune_node(node: dict, base_dir: str) -> int:
+    """Strip missing content and unreachable children. Returns how many were removed."""
+    removed = 0
+
+    content = node.get("content") or {}
+    uri = content.get("uri") or content.get("url")
+    if uri and not uri.startswith(("http://", "https://")):
+        if not os.path.exists(os.path.normpath(os.path.join(base_dir, uri.split("?")[0]))):
+            node.pop("content", None)
+            removed += 1
+
+    kept = []
+    for child in node.get("children", []):
+        removed += prune_node(child, base_dir)
+        # A child with neither content nor children of its own renders nothing.
+        if child.get("content") or child.get("children"):
+            kept.append(child)
+        else:
+            removed += 1
+    if kept:
+        node["children"] = kept
+    else:
+        node.pop("children", None)
+
+    return removed
 
 
 def multiply(a, b):
