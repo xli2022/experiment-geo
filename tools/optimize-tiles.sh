@@ -9,7 +9,7 @@
 #
 #   stock, 4K textures                    1.6 GB    ~98 MB per tile
 #   + tools/shrink-textures.py            960 MB    ~59 MB per tile
-#   + this script                          ~76 MB   ~4.7 MB per tile
+#   + this script                           37 MB    ~2.3 MB per tile  (4% of 1 GB)
 #
 # Geometry, not textures, is the dominant cost after downscaling — 53 MB of a
 # 59 MB tile. Draco is what makes the pipeline viable: without it a single tile

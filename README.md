@@ -72,14 +72,15 @@ tools/optimize-tiles.sh public/tiles/monaco
 PBR texture sets into *every* tile, so raw output is roughly 100 MB per tile. Measured on
 Monaco (~7.8 km², LOD 2, 16 tiles at zoom 15):
 
-| Stage | Total | Per tile |
-|---|---|---|
-| Stock output | 1.6 GB | ~98 MB |
-| `shrink-textures.py` (512px) | 960 MB | ~59 MB |
-| `optimize-tiles.sh` (Draco + WebP) | **~76 MB** | **~4.7 MB** |
+| Stage | Total | Per tile | % of 1 GB budget |
+|---|---|---|---|
+| Stock output | 1.6 GB | ~98 MB | 154% — doesn't fit |
+| `shrink-textures.py` (512px) | 960 MB | ~59 MB | 94% |
+| `optimize-tiles.sh` (Draco + WebP) | **37 MB** | **2.3 MB** | **4%** |
 
-That's a **21× reduction overall**, and it moves the budget from *"Monaco alone doesn't
-fit"* to roughly **110 km² of city within the 1 GB Pages limit**.
+That's a **45× reduction overall**, and it moves the budget from *"Monaco alone doesn't
+fit"* to roughly **200 km² of city within the 1 GB Pages limit** — larger than the whole
+of San Francisco or Paris. Compressing all 16 tiles takes ~60 s.
 
 Note that geometry, not textures, dominates after downscaling — 53 MB of a 59 MB tile —
 so Draco compression is what actually makes this viable. `optimize-tiles.sh` also runs
