@@ -62,7 +62,55 @@ SURFACE_ALLOWLIST = {
     "wood",
 }
 
+# Colour tags OSM2World honours via `useBuildingColors`. Keeping them is what
+# gives the handful of well-mapped buildings their real colour, but a value at
+# either extreme reads as a defect rather than a building: with no texture and
+# no specular response, a `building:colour=#000000` is a black hole in the
+# skyline and pure white is a blown-out silhouette. Measured in Berlin Mitte:
+# 4 buildings tagged #000000, against ~50 tagged plausible tones.
+#
+# Dropping the tag falls back to the palette, which is the desired look anyway.
+COLOUR_KEYS = ("building:colour", "building:color", "roof:colour", "roof:color")
+MIN_LUMINANCE = 0.10
+MAX_LUMINANCE = 0.97
+
+NAMED_COLOURS = {
+    "black": 0.0,
+    "white": 1.0,
+    "grey": 0.5,
+    "gray": 0.5,
+    "silver": 0.75,
+    "red": 0.30,
+    "green": 0.35,
+    "blue": 0.15,
+    "yellow": 0.90,
+    "brown": 0.30,
+    "orange": 0.55,
+    "beige": 0.90,
+    "cream": 0.93,
+}
+
 TAG_RE = re.compile(r'<tag k="surface" v="([^"]*)"\s*/>')
+COLOUR_TAG_RE = re.compile(r'<tag k="([^"]*(?:colour|color))" v="([^"]*)"\s*/>')
+
+
+def luminance(value: str) -> float | None:
+    """Rough perceptual luminance of an OSM colour value, or None if unparsable."""
+    v = value.strip().lower()
+    if v in NAMED_COLOURS:
+        return NAMED_COLOURS[v]
+    if not v.startswith("#"):
+        return None
+    h = v[1:]
+    if len(h) == 3:
+        h = "".join(c * 2 for c in h)
+    if len(h) != 6:
+        return None
+    try:
+        r, g, b = (int(h[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
+    except ValueError:
+        return None
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
 
 def main() -> int:
@@ -82,7 +130,9 @@ def main() -> int:
         run(["osmium", "cat", args.input, "-f", "osm", "-o", raw, "--overwrite"])
 
         dropped: dict[str, int] = {}
+        dropped_colours: dict[str, int] = {}
         kept = 0
+        kept_colours = 0
         with open(raw, encoding="utf-8") as src, open(clean, "w", encoding="utf-8") as dst:
             for line in src:
                 match = TAG_RE.search(line)
@@ -93,14 +143,29 @@ def main() -> int:
                         # Drop the whole line — it is a standalone <tag/> element.
                         continue
                     kept += 1
+                    dst.write(line)
+                    continue
+
+                colour = COLOUR_TAG_RE.search(line)
+                if colour and colour.group(1) in COLOUR_KEYS:
+                    value = colour.group(2)
+                    lum = luminance(value)
+                    if lum is not None and not (MIN_LUMINANCE <= lum <= MAX_LUMINANCE):
+                        key = f"{colour.group(1)}={value}"
+                        dropped_colours[key] = dropped_colours.get(key, 0) + 1
+                        continue
+                    kept_colours += 1
+
                 dst.write(line)
 
         run(["osmium", "cat", clean, "-f", "pbf", "-o", args.output, "--overwrite"])
 
-    total_dropped = sum(dropped.values())
     print(f"Wrote {args.output}")
-    print(f"  surface tags: {kept} kept, {total_dropped} dropped")
+    print(f"  surface tags: {kept} kept, {sum(dropped.values())} dropped")
     for value, count in sorted(dropped.items(), key=lambda kv: -kv[1]):
+        print(f"    {count:5d}  {value}")
+    print(f"  colour tags:  {kept_colours} kept, {sum(dropped_colours.values())} dropped")
+    for value, count in sorted(dropped_colours.items(), key=lambda kv: -kv[1]):
         print(f"    {count:5d}  {value}")
     return 0
 

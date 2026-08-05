@@ -139,11 +139,20 @@ curl -L https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf \
 tools/make-lowpoly-config.py vendor/osm2world/standard.properties \
     -o vendor/osm2world/lowpoly.properties
 
-# 4. Bake, compress, and write the root tileset
+# 4. Bake, vary the roofs, compress, and write the root tileset
 tools/bake.sh berlin "52.4970,13.3560 52.5370,13.4220" 2 15
+tools/vary-roofs.py public/tiles/berlin
 tools/optimize-tiles.sh public/tiles/berlin --no-simplify
 tools/make-root-tileset.py public/tiles/berlin
 ```
+
+`vary-roofs.py` runs on the raw bake, before compression — Draco-compressed
+accessors have no readable buffer view. OSM2World assigns materials per *feature
+type*, so every untagged roof lands on one shade of terracotta and the skyline reads as a
+single flat sheet. The tool finds connected components among roof-coloured triangles and
+gives each one a palette variant chosen by a stable hash of its centroid, so a building
+keeps its colour across re-bakes. Components are joined only through roof triangles, never
+through walls, which is what stops a Berlin terrace collapsing into one colour.
 
 Note `--no-simplify`: `optimize-tiles.sh` otherwise runs a lossy geometry simplify pass,
 and crisp edges are the entire point of this style. The tiles are small enough without it.

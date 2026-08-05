@@ -106,6 +106,13 @@ PALETTE = {
     "TREE_BILLBOARD_BROAD_LEAVED": "#6f9a57",
     "TREE_BILLBOARD_BROAD_LEAVED_FRUIT": "#77a25c",
     "TREE_BILLBOARD_CONIFEROUS": "#5c8a52",
+    # The 3D tree models used when useBillboards is false. These carry
+    # OSM2World's own hardcoded colours until the config overrides them — a
+    # saturated #007d00 crown and #4c3333 trunk that sit well outside this
+    # palette, and which dominate the frame because trees are the majority of
+    # the geometry in a leafy city.
+    "TREE_CROWN": "#6f9a57",
+    "TREE_TRUNK": "#8a7150",
     # Water, snow, ice.
     "WATER": "#7fa8c4",
     "ICE": "#dbe8ef",
@@ -141,7 +148,51 @@ PALETTE = {
     "ADVERTISING_POSTER": "#c9c4bb",
     "POWER_TOWER_HORIZONTAL": "#9aa0a6",
     "POWER_TOWER_VERTICAL": "#9aa0a6",
+    # --- materials that exist only in DefaultMaterials, not in the config ---
+    #
+    # standard.properties does not mention these at all, so a palette derived
+    # from it alone silently misses them and they keep OSM2World's built-in
+    # colours. Found by diffing the material constants in
+    # org.osm2world.scene.material.DefaultMaterials against the config; see
+    # EXTRA_MATERIALS below, which forces them to be emitted.
+    "BRIDGE_DEFAULT": "#c2bcb2",
+    "BRIDGE_PILLAR_DEFAULT": "#b8b2a8",
+    "TUNNEL_DEFAULT": "#9a958c",
+    "FENCE_DEFAULT": "#a89f92",
+    "METAL_FENCE": "#a8adb2",
+    "METAL_FENCE_POST": "#9aa0a6",
+    "SPLIT_RAIL_FENCE": "#9b7c55",
+    "HANDRAIL_DEFAULT": "#a8adb2",
+    "BUS_STOP_SIGN": "#c9c4bb",
+    "FIREHYDRANT": "#c4514a",
+    "POSTBOX_DEUTSCHEPOST": "#cfae52",
+    "POSTBOX_ROYALMAIL": "#b5514a",
+    "TAXIWAY_CENTER_MARKING": "#d8c98a",
+    "TELEKOM_MANGENTA": "#b56a94",
 }
+
+# Materials referenced by OSM2World's code but absent from standard.properties.
+# Without these the generated config never mentions them and they fall back to
+# hardcoded defaults. Kept as an explicit list so a future OSM2World release
+# that adds more is a visible diff rather than a silent regression.
+EXTRA_MATERIALS = (
+    "BRIDGE_DEFAULT",
+    "BRIDGE_PILLAR_DEFAULT",
+    "BUS_STOP_SIGN",
+    "FENCE_DEFAULT",
+    "FIREHYDRANT",
+    "HANDRAIL_DEFAULT",
+    "METAL_FENCE",
+    "METAL_FENCE_POST",
+    "POSTBOX_DEUTSCHEPOST",
+    "POSTBOX_ROYALMAIL",
+    "SPLIT_RAIL_FENCE",
+    "TAXIWAY_CENTER_MARKING",
+    "TELEKOM_MANGENTA",
+    "TREE_CROWN",
+    "TREE_TRUNK",
+    "TUNNEL_DEFAULT",
+)
 
 # Global settings, written verbatim. This config is deliberately *self-contained*
 # rather than `include`-ing standard.properties.
@@ -200,7 +251,7 @@ def main() -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    materials = sorted(set(MATERIAL_NAME.findall(text)))
+    materials = sorted(set(MATERIAL_NAME.findall(text)) | set(EXTRA_MATERIALS))
     missing = [m for m in materials if m not in PALETTE]
 
     # Carried-over per-material flags, e.g. material_FLAGCLOTH_doubleSided.

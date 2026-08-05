@@ -187,5 +187,6 @@ SIZE_BYTES=$(du -sb "$OUT_DIR" | cut -f1)
 echo "  size:   $(du -sh "$OUT_DIR" | cut -f1) (before tools/optimize-tiles.sh)"
 echo
 echo "Next:"
-echo "  tools/optimize-tiles.sh $OUT_DIR"
+echo "  tools/vary-roofs.py $OUT_DIR"
+echo "  tools/optimize-tiles.sh $OUT_DIR --no-simplify"
 echo "  tools/make-root-tileset.py $OUT_DIR"
