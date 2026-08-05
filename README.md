@@ -20,7 +20,7 @@ npm install
 npm run dev
 ```
 
-A baked world (Monaco) is committed, so this runs with nothing else to set up.
+A baked world (Berlin) is committed, so this runs with nothing else to set up.
 See **Baking a world** below to build a different one.
 
 ```bash
@@ -44,12 +44,41 @@ Click the canvas to capture the pointer, then:
 Movement speed scales with altitude, so the controls feel the same whether you're
 inspecting a doorway or crossing the city.
 
+## Why Berlin
+
+Globally, only ~0.4% of OSM buildings carry a material or colour tag, so almost every
+city renders as one default plaster. Surveyed 16 cities on equal-size 1.5 km samples to
+find the exceptions:
+
+| Sample | `building:material` | `building:colour` | `roof:shape` | `height` |
+|---|---|---|---|---|
+| **Berlin Mitte** | **71.4%** | **72.0%** | **76.0%** | 71.9% |
+| Dresden | 15.7% | 10.9% | 54.2% | 30.5% |
+| Hamburg | 5.2% | 2.7% | 30.0% | 8.5% |
+| Munich | 2.0% | 4.7% | 41.3% | 2.5% |
+| Vienna | 1.6% | 0.5% | 13.4% | 70.5% |
+| Paris | 1.1% | 1.0% | 3.3% | 1.7% |
+| Monaco | 2.1% | 1.1% | 5.1% | 3.3% |
+| SF Financial | 0.5% | 0.2% | 3.2% | **71.7%** |
+
+Berlin is ~35× better tagged than anywhere else measured, with individually surveyed hex
+colours (`#eac6b1`, `#d6bfa7`), real materials (sandstone, glass, copper) and real roof
+shapes. Note the last column though: **San Francisco has the height data Berlin's
+skyline lacks** — if the priority ever shifts from facades to silhouette, or once terrain
+lands and hills start mattering, SF is the better world despite its uniform facades.
+
+**Not every Berlin district bakes.** OSM2World throws a NullPointerException from
+`DefaultMaterials.getSurfaceMaterial` on unusual `surface=` values (`dance_floor`,
+`grille`, `tartan`, `concrete:plates`) and aborts the entire tile rather than falling
+back. Stripping the rare values took Mitte from 0 tiles to 4; Prenzlauer Berg still fails
+entirely. Kreuzberg bakes cleanly but has only 3.3% material coverage, so it looks like
+Monaco — it is included for area, while Mitte is the part worth flying through.
+
 ## Baking a world
 
 Geometry is generated offline rather than at runtime, because realism has to come from a
-renderer that knows how buildings are shaped — under 0.4% of OSM buildings carry any
-material or colour tag, so there is nothing to render realistically *from* in the raw
-data.
+renderer that knows how buildings are shaped — the tags carry material *names*, never
+imagery, so something has to turn "sandstone" into a surface.
 
 ```bash
 # 1. OSM2World -> vendor/osm2world/  (~478 MB, mostly its texture library)
