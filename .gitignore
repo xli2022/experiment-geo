@@ -21,3 +21,10 @@ vendor/
 
 # Screenshots and scratch captures
 *.png
+
+# Intermediate capture artifacts. ortho.png is promoted into public/tiles/<world>/
+# by tools/project-ortho.py once it has been projected; the copy at the repo
+# root is scratch.
+/ortho.png
+/ortho.json
+/*.png

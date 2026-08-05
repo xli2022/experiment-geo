@@ -68,3 +68,5 @@ declare global {
   }
 }
 window.app = { viewer, world, flyCamera, THREE };
+// tools/capture-ortho.mjs reads this to georeference the raster it renders.
+(window as unknown as { __anchor?: unknown }).__anchor = TILESET_ANCHOR ?? null;
