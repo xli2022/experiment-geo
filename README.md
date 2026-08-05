@@ -50,23 +50,47 @@ renderer that knows how buildings are shaped — under 0.4% of OSM buildings car
 material or colour tag, so there is nothing to render realistically *from* in the raw
 data.
 
-1. Download OSM2World and unzip it to `vendor/osm2world/`:
-   <https://osm2world.org/download/files/latest/OSM2World-latest-bin.zip> (~478 MB, mostly
-   its shared texture library).
-2. Download an extract from [Geofabrik](https://download.geofabrik.de/) to
-   `vendor/extracts/<city>.osm.pbf`.
-3. Bake:
+```bash
+# 1. OSM2World -> vendor/osm2world/  (~478 MB, mostly its texture library)
+curl -L https://osm2world.org/download/files/latest/OSM2World-latest-bin.zip -o o2w.zip
+unzip -q o2w.zip -d vendor/osm2world && rm o2w.zip
 
-   ```bash
-   tools/bake.sh monaco "43.7237,7.4090 43.7519,7.4398" 2
-   ```
+# 2. An extract from https://download.geofabrik.de/
+mkdir -p vendor/extracts
+curl -L https://download.geofabrik.de/europe/monaco-latest.osm.pbf \
+     -o vendor/extracts/monaco.osm.pbf
 
-The script reports output size as a percentage of the 1 GB GitHub Pages budget, and warns
-if you exceed it. Baked tiles land in `public/tiles/<city>/` and are gitignored — they're
-build artifacts, and `tools/bake.sh` plus a pinned extract date is the source of truth.
+# 3. Shrink the texture library — once, before the first bake
+pip install Pillow && tools/shrink-textures.py
 
-**LOD is the main cost lever.** Higher levels are dramatically more expensive to bake;
-start at LOD 2 and raise it only if the detail is worth the time and bytes.
+# 4. Bake, then compress
+tools/bake.sh monaco "43.7237,7.4090 43.7519,7.4398" 2
+tools/optimize-tiles.sh public/tiles/monaco
+```
+
+**Steps 3 and 4 are not optional.** OSM2World writes uncompressed glTF and embeds its 4K
+PBR texture sets into *every* tile, so raw output is roughly 100 MB per tile. Measured on
+Monaco (~7.8 km², LOD 2, 16 tiles at zoom 15):
+
+| Stage | Total | Per tile |
+|---|---|---|
+| Stock output | 1.6 GB | ~98 MB |
+| `shrink-textures.py` (512px) | 960 MB | ~59 MB |
+| `optimize-tiles.sh` (Draco + WebP) | **~76 MB** | **~4.7 MB** |
+
+That's a **21× reduction overall**, and it moves the budget from *"Monaco alone doesn't
+fit"* to roughly **110 km² of city within the 1 GB Pages limit**.
+
+Note that geometry, not textures, dominates after downscaling — 53 MB of a 59 MB tile —
+so Draco compression is what actually makes this viable. `optimize-tiles.sh` also runs
+`simplify`, which is lossy; pass `--no-simplify` if architectural detail matters more than
+the last few MB.
+
+**LOD is the other cost lever.** LOD 4 did not finish within 6 minutes on 4 cores for an
+area this size; LOD 2 takes ~100 s. Start low.
+
+Baked tiles land in `public/tiles/<city>/` and are gitignored — they're build artifacts,
+and `tools/bake.sh` plus a pinned extract date is the source of truth.
 
 ## Hosting
 
