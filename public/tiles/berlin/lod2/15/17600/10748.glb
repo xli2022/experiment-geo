@@ -7,36 +7,6 @@
     {
       "type": "SCALAR",
       "componentType": 5123,
-      "count": 209874
-    },
-    {
-      "type": "VEC3",
-      "componentType": 5126,
-      "count": 65362
-    },
-    {
-      "type": "VEC3",
-      "componentType": 5126,
-      "count": 65362,
-      "max": [
-        372.2019958496094,
-        45,
-        372.18798828125
-      ],
-      "min": [
-        -372.2019958496094,
-        -3.0999999046325684,
-        -372.21600341796875
-      ]
-    },
-    {
-      "type": "VEC3",
-      "componentType": 5126,
-      "count": 65362
-    },
-    {
-      "type": "SCALAR",
-      "componentType": 5123,
       "count": 705
     },
     {
@@ -51,44 +21,74 @@
       "max": [
         331.2560119628906,
         6,
-        372.18798828125
+        375.18798828125
       ],
       "min": [
         -164.7760009765625,
         0,
-        -372.21600341796875
+        -375.2170104980469
       ]
     },
     {
       "type": "VEC3",
       "componentType": 5126,
       "count": 573
+    },
+    {
+      "type": "SCALAR",
+      "componentType": 5125,
+      "count": 210942
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 65856
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 65856,
+      "max": [
+        375.2040100097656,
+        45,
+        375.18798828125
+      ],
+      "min": [
+        -375.2040100097656,
+        -3.0999999046325684,
+        -375.2170104980469
+      ]
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 65856
     }
   ],
   "bufferViews": [
     {
       "buffer": 0,
       "byteOffset": 0,
-      "byteLength": 234341
+      "byteLength": 1348
     },
     {
       "buffer": 0,
-      "byteOffset": 234341,
-      "byteLength": 1352
+      "byteOffset": 1348,
+      "byteLength": 236696
     }
   ],
   "buffers": [
     {
       "uri": "10748.glb.bin",
-      "byteLength": 235693
+      "byteLength": 238044
     }
   ],
   "materials": [
     {
+      "doubleSided": true,
       "pbrMetallicRoughness": {}
     },
     {
-      "doubleSided": true,
       "pbrMetallicRoughness": {}
     }
   ],

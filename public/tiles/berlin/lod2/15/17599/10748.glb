@@ -6,6 +6,36 @@
   "accessors": [
     {
       "type": "SCALAR",
+      "componentType": 5125,
+      "count": 171414
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 126357
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 126357,
+      "max": [
+        375.2040100097656,
+        29,
+        375.18798828125
+      ],
+      "min": [
+        -375.2040100097656,
+        -1.100000023841858,
+        -375.2170104980469
+      ]
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 126357
+    },
+    {
+      "type": "SCALAR",
       "componentType": 5123,
       "count": 267
     },
@@ -21,74 +51,44 @@
       "max": [
         121.81800079345703,
         5.900000095367432,
-        220.6909942626953
+        220.68600463867188
       ],
       "min": [
         30.325000762939453,
         -1.100000023841858,
-        35.87300109863281
+        35.867000579833984
       ]
     },
     {
       "type": "VEC3",
       "componentType": 5126,
       "count": 233
-    },
-    {
-      "type": "SCALAR",
-      "componentType": 5125,
-      "count": 169440
-    },
-    {
-      "type": "VEC3",
-      "componentType": 5126,
-      "count": 124924
-    },
-    {
-      "type": "VEC3",
-      "componentType": 5126,
-      "count": 124924,
-      "max": [
-        372.2019958496094,
-        29,
-        372.18798828125
-      ],
-      "min": [
-        -372.2019958496094,
-        -1.100000023841858,
-        -372.21600341796875
-      ]
-    },
-    {
-      "type": "VEC3",
-      "componentType": 5126,
-      "count": 124924
     }
   ],
   "bufferViews": [
     {
       "buffer": 0,
       "byteOffset": 0,
-      "byteLength": 717
+      "byteLength": 182933
     },
     {
       "buffer": 0,
-      "byteOffset": 717,
-      "byteLength": 180800
+      "byteOffset": 182933,
+      "byteLength": 714
     }
   ],
   "buffers": [
     {
       "uri": "10748.glb.bin",
-      "byteLength": 181517
+      "byteLength": 183647
     }
   ],
   "materials": [
     {
-      "doubleSided": true,
       "pbrMetallicRoughness": {}
     },
     {
+      "doubleSided": true,
       "pbrMetallicRoughness": {}
     }
   ],
