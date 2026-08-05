@@ -139,12 +139,24 @@ curl -L https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf \
 tools/make-lowpoly-config.py vendor/osm2world/standard.properties \
     -o vendor/osm2world/lowpoly.properties
 
-# 4. Bake, vary the buildings, compress, and write the root tileset
+# 4. Bake, separate the ground layers, vary the buildings, compress, root tileset
 tools/bake.sh berlin "52.4970,13.3560 52.5370,13.4220" 2 15
+tools/offset-ground.py public/tiles/berlin
 tools/vary-buildings.py public/tiles/berlin
 tools/optimize-tiles.sh public/tiles/berlin --no-simplify
 tools/make-root-tileset.py public/tiles/berlin
 ```
+
+`offset-ground.py` fixes the z-fighting along kerbs, road edges and area
+boundaries. OSM2World puts terrain, roads, pavements, kerbs, ballast and lane markings all
+at ground level, and ground level means *exactly* `y = 0` — measured in one z15 tile,
+**19,902 near-horizontal triangles within 6 cm of zero**, 35.8% asphalt against 31.3%
+terrain and 15.4% pavement, every one competing for the same depth value. No renderer
+setting fixes that: a depth buffer cannot order coplanar surfaces, `logarithmicDepthBuffer`
+(already on) improves precision across *distance* rather than resolving ties, and polygon
+offset has nothing to bias against because a tile is a single material. So the tool pushes
+each layer to its own height, in the order a street is built — 8 cm across the whole stack,
+invisible in flight and orders of magnitude more than the depth buffer needs.
 
 `vary-buildings.py` runs on the raw bake, before compression — Draco-compressed
 accessors have no readable buffer view. OSM2World assigns materials per *feature

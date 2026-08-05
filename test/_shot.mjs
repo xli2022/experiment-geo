@@ -37,7 +37,7 @@ console.log('problems:', bad.length ? bad.slice(0, 4) : 'none');
 import fs from 'node:fs';
 const dataUrl = await p.evaluate(() => {
   const { viewer } = window.app;
-  viewer.renderer.render(viewer.scene, viewer.camera);
+  viewer.render();
   return viewer.renderer.domElement.toDataURL('image/png');
 });
 fs.writeFileSync('lowpoly.png', Buffer.from(dataUrl.split(',')[1], 'base64'));

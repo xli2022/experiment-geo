@@ -82,6 +82,10 @@ export class TilesetSource implements WorldSource {
 
     this.tiles.addEventListener('load-root-tileset', this.place);
     this.tiles.addEventListener('load-error', this.onLoadError);
+    // Shadow flags have to be set as tiles stream in — they are created long
+    // after the scene is built, and a mesh that neither casts nor receives is
+    // simply absent from the shadow pass rather than erroring.
+    this.tiles.addEventListener('load-model', this.onLoadModel);
   }
 
   attach(scene: THREE.Scene): void {
@@ -162,5 +166,17 @@ export class TilesetSource implements WorldSource {
     this.opts.onError?.(
       new Error(`Failed to load ${String(event.url)}: ${event.error.message}`),
     );
+  };
+
+  private onLoadModel = (event: { scene: THREE.Object3D }): void => {
+    event.scene.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      // Every tile both casts and receives: a city block shadows the street,
+      // and the same block is shadowed by its neighbour. Splitting the two
+      // would save a little fill rate and lose most of the effect.
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    });
   };
 }

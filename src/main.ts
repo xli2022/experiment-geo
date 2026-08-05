@@ -9,7 +9,7 @@ import { ERROR_TARGET, START_ALTITUDE, TILESET_ANCHOR, TILESET_URL } from './con
 const viewer = new Viewer(document.body);
 const hud = new Hud();
 
-setupLighting(viewer.scene, viewer.renderer);
+const lighting = setupLighting(viewer.scene, viewer.renderer);
 
 const flyCamera = new FlyCamera(viewer.camera, viewer.canvas);
 
@@ -44,6 +44,9 @@ hud.setOverlay('Loading the world…');
 viewer.onUpdate((dt) => {
   flyCamera.update(dt);
   world.update(viewer.camera, dt);
+  // After the camera moves, so the shadow camera is fitted to where the view
+  // actually is this frame rather than trailing it by one.
+  lighting.update(viewer.camera);
 
   hud.update(dt, {
     alt: formatDistance(flyCamera.altitude),

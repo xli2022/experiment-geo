@@ -37,7 +37,7 @@ await p.waitForTimeout(25000);
 
 const dataUrl = await p.evaluate(() => {
   const { viewer } = window.app;
-  viewer.renderer.render(viewer.scene, viewer.camera);
+  viewer.render();
   return viewer.renderer.domElement.toDataURL('image/png');
 });
 fs.writeFileSync(OUT, Buffer.from(dataUrl.split(',')[1], 'base64'));
