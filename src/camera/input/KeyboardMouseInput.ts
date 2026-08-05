@@ -7,7 +7,6 @@ const KEY_BINDINGS = {
   KeyD: 'right',
   KeyE: 'up',
   KeyQ: 'down',
-  Space: 'up',
   ShiftLeft: 'boost',
   ShiftRight: 'boost',
 } as const;

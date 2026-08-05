@@ -36,7 +36,7 @@ npm run build       # typecheck + vite build
 |---|---|
 | Mouse | Look |
 | `W` `A` `S` `D` | Move horizontally, relative to where you're looking |
-| `Q` / `E` / `Space` | Move straight down / up, always world-aligned |
+| `Q` / `E` | Move straight down / up, always world-aligned |
 | `Shift` | Boost (×4) |
 | `Esc` | Release the pointer |
 
