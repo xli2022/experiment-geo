@@ -8,13 +8,13 @@
  * variable rather than a constant.
  */
 export const TILESET_URL =
-  import.meta.env.VITE_TILESET_URL ?? `${import.meta.env.BASE_URL}tiles/berlin/tileset.json`;
+  import.meta.env.VITE_TILESET_URL ?? `${import.meta.env.BASE_URL}tiles/berlin3d/tileset.json`;
 
 /** Screen-space error target in pixels. Lower = more detail, more memory. */
 export const ERROR_TARGET = Number(import.meta.env.VITE_ERROR_TARGET ?? 12);
 
 /** Starting camera height above the tileset centre, in metres. */
-export const START_ALTITUDE = 450;
+export const START_ALTITUDE = 700;
 
 /**
  * Optional point to place at the world origin, as "lat,lon".
@@ -24,7 +24,8 @@ export const START_ALTITUDE = 450;
  * sphere, which is the middle of the whole city rather than the part that was
  * actually downloaded.
  */
-const anchorEnv = import.meta.env.VITE_TILESET_ANCHOR;
+// Berlin Mitte — the centre of the downloaded subtree.
+const anchorEnv = import.meta.env.VITE_TILESET_ANCHOR ?? '52.5170,13.3889';
 export const TILESET_ANCHOR = anchorEnv
   ? (([lat, lon]) => ({ lat, lon }))(anchorEnv.split(',').map(Number) as [number, number])
   : undefined;

@@ -8,8 +8,8 @@ city with realistic streets and buildings.
 | | |
 |---|---|
 | Platform | Web — TypeScript + Vite + three.js |
-| Geometry | Pre-baked with [OSM2World](https://osm2world.org/) → OGC 3D Tiles |
-| Look | Realistic — real roof shapes, lane markings, PBR materials |
+| Geometry | Berlin's open photogrammetric mesh (OGC 3D Tiles) |
+| Look | Photorealistic — real aerial-survey imagery |
 | Streaming | [`3d-tiles-renderer`](https://github.com/NASA-AMMOS/3DTilesRendererJS) |
 | Game layer | None yet — a world viewer first |
 
@@ -20,8 +20,7 @@ npm install
 npm run dev
 ```
 
-A baked world (Berlin) is committed, so this runs with nothing else to set up.
-See **Baking a world** below to build a different one.
+A world (Berlin Mitte) is committed, so this runs with nothing else to set up.
 
 ```bash
 npm run typecheck   # tsc --noEmit
@@ -44,41 +43,55 @@ Click the canvas to capture the pointer, then:
 Movement speed scales with altitude, so the controls feel the same whether you're
 inspecting a doorway or crossing the city.
 
-## Why Berlin
+## The world
 
-Globally, only ~0.4% of OSM buildings carry a material or colour tag, so almost every
-city renders as one default plaster. Surveyed 16 cities on equal-size 1.5 km samples to
-find the exceptions:
+Berlin publishes a **photogrammetric 3D mesh of the whole city as open data** —
+real aerial-survey imagery, under
+[dl-de/zero-2-0](https://www.govdata.de/dl-de/zero-2-0), which carries no restrictions
+at all. It is served as OGC 3D Tiles with `access-control-allow-origin: *`, so a browser
+reads it directly.
 
-| Sample | `building:material` | `building:colour` | `roof:shape` | `height` |
-|---|---|---|---|---|
-| **Berlin Mitte** | **71.4%** | **72.0%** | **76.0%** | 71.9% |
-| Dresden | 15.7% | 10.9% | 54.2% | 30.5% |
-| Hamburg | 5.2% | 2.7% | 30.0% | 8.5% |
-| Munich | 2.0% | 4.7% | 41.3% | 2.5% |
-| Vienna | 1.6% | 0.5% | 13.4% | 70.5% |
-| Paris | 1.1% | 1.0% | 3.3% | 1.7% |
-| Monaco | 2.1% | 1.1% | 5.1% | 3.3% |
-| SF Financial | 0.5% | 0.2% | 3.2% | **71.7%** |
+`tools/fetch-3dtiles.py` downloads a bounded neighbourhood around a point for
+self-hosting (311 tiles / 162 MB around Mitte — 16% of the Pages budget):
 
-Berlin is ~35× better tagged than anywhere else measured, with individually surveyed hex
-colours (`#eac6b1`, `#d6bfa7`), real materials (sandstone, glass, copper) and real roof
-shapes. Note the last column though: **San Francisco has the height data Berlin's
-skyline lacks** — if the priority ever shifts from facades to silhouette, or once terrain
-lands and hills start mattering, SF is the better world despite its uniform facades.
+```bash
+tools/fetch-3dtiles.py \
+  https://download-berlin3d.virtualcitymap.de/datasource-data/HOSTING-Berlin-DLPortal/Mesh_2025/tileset.json \
+  public/tiles/berlin3d --lat 52.5170 --lon 13.3889 --radius 600
+```
 
-**Not every Berlin district bakes.** OSM2World throws a NullPointerException from
-`DefaultMaterials.getSurfaceMaterial` on unusual `surface=` values (`dance_floor`,
-`grille`, `tartan`, `concrete:plates`) and aborts the entire tile rather than falling
-back. Stripping the rare values took Mitte from 0 tiles to 4; Prenzlauer Berg still fails
-entirely. Kreuzberg bakes cleanly but has only 3.3% material coverage, so it looks like
-Monaco — it is included for area, while Mitte is the part worth flying through.
+Two things it has to get right, both of which fail silently otherwise:
 
-## Baking a world
+- **Bounding volumes live in each tile's local frame** and 3D Tiles composes a
+  `transform` down the tree. Ignoring it doesn't skew the test — an ECEF point comes out
+  21,000 half-widths outside a box it is squarely inside, and the crawl returns nothing.
+- **A partial subtree must have its dangling child references pruned.** A 3D Tiles client
+  refines across *siblings*, so it will request tiles you never fetched; served from a
+  static host those 404s come back as HTML and the loader dies on
+  `Content type "<!do" not supported`, taking the whole world down rather than one tile.
 
-Geometry is generated offline rather than at runtime, because realism has to come from a
-renderer that knows how buildings are shaped — the tags carry material *names*, never
-imagery, so something has to turn "sandstone" into a surface.
+The same tool works against [PLATEAU](https://www.mlit.go.jp/plateau/en/) (~250 Japanese
+cities) and [Helsinki 3D](https://www.hel.fi/en/decision-making/information-on-helsinki/maps-and-geospatial-data/helsinki-3d).
+
+### The OSM route, and why it was abandoned
+
+The original pipeline baked geometry from OpenStreetMap with
+[OSM2World](https://osm2world.org/). It works and the tooling is still here
+(`tools/bake.sh`, `shrink-textures.py`, `optimize-tiles.sh`, `make-root-tileset.py`), but
+it cannot look real: only ~0.4% of OSM buildings carry a material or colour tag, so almost
+every building renders in one default plaster. Measured across 16 cities, Berlin Mitte was
+the sole outlier at 71% material coverage — and OSM2World then throws a
+NullPointerException on Mitte's unusual `surface=` values, aborting whole tiles.
+
+Worth keeping in mind: **San Francisco has 71.7% height coverage** where Berlin's data is
+flat, so it remains the better choice if the priority ever shifts to skyline or once
+terrain lands.
+
+
+## Baking a world from OSM (the alternative route)
+
+Still supported, and the right choice if you need a city with no open photogrammetric
+mesh. It produces stylized geometry, not photographs.
 
 ```bash
 # 1. OSM2World -> vendor/osm2world/  (~478 MB, mostly its texture library)
@@ -150,11 +163,14 @@ If the tileset outgrows 1 GB, host it on Cloudflare R2 (zero egress fees) and se
 
 ## Data & licensing
 
-Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), under
-the Open Database License. Geometry rendered with [OSM2World](https://osm2world.org/)
-(MIT, textures included).
+The shipped world is the 3D mesh © [Geoportal Berlin](https://daten.berlin.de/), under
+[dl-de/zero-2-0](https://www.govdata.de/dl-de/zero-2-0) — no restrictions, commercial use
+included.
 
-Attribution is displayed in-app without requiring interaction, as ODbL requires. Note that
-**baked geometry is a Derivative Database** rather than a Produced Work, so a published
-tileset should itself be offered under ODbL — the application code and any original art
-are unaffected.
+The OSM route uses map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright)
+under ODbL, rendered with [OSM2World](https://osm2world.org/) (MIT, textures included).
+Note that **baked OSM geometry is a Derivative Database** rather than a Produced Work, so
+a published tileset built that way should itself be offered under ODbL — application code
+and original art are unaffected.
+
+Attribution is displayed in-app without requiring interaction, as both licences expect.
