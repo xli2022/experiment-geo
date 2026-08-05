@@ -36,8 +36,8 @@ jobs:
       # output is self-contained and no bake runs here.
       - name: Check the world is actually present
         run: |
-          if [ ! -f dist/tiles/berlin3d/tileset.json ]; then
-            echo "::error::dist/tiles/berlin3d/tileset.json is missing — the deploy would publish an empty world"
+          if [ ! -f dist/tiles/berlin-hybrid/tileset.json ]; then
+            echo "::error::dist/tiles/berlin-hybrid/tileset.json is missing — the deploy would publish an empty world"
             exit 1
           fi
           echo "tileset: $(find dist/tiles \( -name '*.glb' -o -name '*.b3dm' \) | wc -l) tiles"

@@ -8,7 +8,7 @@
  * variable rather than a constant.
  */
 export const TILESET_URL =
-  import.meta.env.VITE_TILESET_URL ?? `${import.meta.env.BASE_URL}tiles/berlin3d/tileset.json`;
+  import.meta.env.VITE_TILESET_URL ?? `${import.meta.env.BASE_URL}tiles/berlin-hybrid/tileset.json`;
 
 /** Screen-space error target in pixels. Lower = more detail, more memory. */
 export const ERROR_TARGET = Number(import.meta.env.VITE_ERROR_TARGET ?? 12);
