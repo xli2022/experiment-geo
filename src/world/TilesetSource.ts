@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { TilesRenderer } from '3d-tiles-renderer';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { GLTFExtensionsPlugin } from '3d-tiles-renderer/plugins';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import type { WorldSource } from './WorldSource';
 
@@ -74,11 +74,20 @@ export class TilesetSource implements WorldSource {
     this.dracoLoader = new DRACOLoader();
     this.dracoLoader.setDecoderPath(`${import.meta.env.BASE_URL}draco/`);
 
-    const gltfLoader = new GLTFLoader(this.tiles.manager);
-    gltfLoader.setDRACOLoader(this.dracoLoader);
-    // TilesRenderer looks these up as the literal strings 'path.gltf'/'path.glb'.
-    this.tiles.manager.addHandler(/\.gltf$/, gltfLoader);
-    this.tiles.manager.addHandler(/\.glb$/, gltfLoader);
+    // Registering a GLTFLoader on the manager only reaches tiles whose content
+    // *is* a .glb, which is what the Berlin bake produces. Tilesets from
+    // elsewhere ship .b3dm, and its glTF payload is parsed by a loader the
+    // renderer owns internally, so a manager handler never sees it — PLATEAU's
+    // Tokyo tiles came out as empty sky, their Draco meshes undecodable and
+    // their CESIUM_RTC origin unapplied, which drops the geometry near the
+    // centre of the earth.
+    //
+    // This plugin configures that internal loader instead, and covers .glb by
+    // the same route. autoDispose is off because dispose() below already owns
+    // the DRACO loader, and disposing it twice throws.
+    this.tiles.registerPlugin(
+      new GLTFExtensionsPlugin({ dracoLoader: this.dracoLoader, autoDispose: false }),
+    );
 
     this.tiles.addEventListener('load-root-tileset', this.place);
     this.tiles.addEventListener('load-error', this.onLoadError);

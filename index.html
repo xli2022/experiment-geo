@@ -38,6 +38,31 @@
       }
       #hud a { color: inherit; pointer-events: auto; }
       #stats { white-space: pre; }
+      #hud-left { display: flex; flex-direction: column; align-items: flex-start; gap: 0.4rem; }
+
+      /* The HUD ignores pointer events so the canvas can have them; the one
+         control in it has to opt back in. */
+      #city {
+        pointer-events: auto;
+        appearance: none;
+        padding: 0.3rem 1.6rem 0.3rem 0.5rem;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        border-radius: 4px;
+        background: rgba(12, 18, 26, 0.55);
+        color: rgba(255, 255, 255, 0.92);
+        font: inherit;
+        backdrop-filter: blur(3px);
+        /* Own arrow, since appearance:none removes the platform's. */
+        background-image: linear-gradient(45deg, transparent 50%, rgba(255,255,255,0.7) 50%),
+                          linear-gradient(135deg, rgba(255,255,255,0.7) 50%, transparent 50%);
+        background-position: right 0.7rem center, right 0.45rem center;
+        background-size: 5px 5px, 5px 5px;
+        background-repeat: no-repeat;
+      }
+      #city:disabled { opacity: 0.5; }
+      /* The options themselves are drawn by the platform, which does not
+         inherit the dark HUD colours on every browser. */
+      #city option { background: #0b0f14; color: #fff; }
 
       /* OSM attribution must be visible without interaction (ODbL). */
       #attribution { text-align: right; opacity: 0.65; }
@@ -134,7 +159,13 @@
     </div>
 
     <div id="hud">
-      <div id="stats"></div>
+      <div id="hud-left">
+        <select id="city" aria-label="City"></select>
+        <div id="stats"></div>
+      </div>
+      <!-- The default city's credit ships in the markup, because ODbL requires
+           it to be visible without interaction — including before any script
+           has run. src/ui/Hud.ts replaces it when the city changes. -->
       <div id="attribution">
         Map data ©
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener"

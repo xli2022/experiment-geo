@@ -1,14 +1,17 @@
 /**
  * Status readout: frame rate, camera altitude, and load progress.
  *
- * The OSM attribution lives in index.html rather than here, because ODbL
- * requires it to be visible without interaction — including before any
- * JavaScript has run.
+ * index.html ships the default city's credit in the markup rather than leaving
+ * the line empty for JavaScript to fill, because ODbL requires it to be visible
+ * without interaction — including before any script has run. Switching city
+ * replaces it, since each source carries its own terms and showing the wrong
+ * one is worse than showing none.
  */
 export class Hud {
   private readonly el: HTMLElement;
   private readonly overlay: HTMLElement | null;
   private readonly overlayMsg: HTMLElement | null;
+  private readonly attribution: HTMLElement | null;
 
   private frames = 0;
   private elapsed = 0;
@@ -20,6 +23,15 @@ export class Hud {
     this.el = el;
     this.overlay = document.getElementById('overlay');
     this.overlayMsg = document.getElementById('overlay-msg');
+    this.attribution = document.getElementById('attribution');
+  }
+
+  /**
+   * Replace the credit line. `html` comes from the city registry, which is
+   * compile-time constants in this repository — never from a tileset.
+   */
+  setAttribution(html: string): void {
+    if (this.attribution) this.attribution.innerHTML = html;
   }
 
   /** Show a blocking message over the scene. Pass null to hide it. */
