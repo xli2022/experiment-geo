@@ -35,13 +35,14 @@ export class Viewer {
   private composer: EffectComposer | null = null;
 
   constructor(container: HTMLElement = document.body, options: ViewerOptions = {}) {
-    // The near plane is the single biggest lever on depth precision, and 0.5 m
-    // buys nothing here: this is a camera that flies over a city, so the
-    // nearest thing it ever meaningfully approaches is a roof. Against an
-    // 80 km far plane, 0.5 m is a 160,000:1 ratio; 2 m cuts that fourfold for
-    // free. It matters most on phones, where the depth buffer is often
-    // shallower than the desktop one this is developed against, and coplanar
-    // surfaces that resolve here can still tile against each other there.
+    // The near plane is set for framing, not for precision. With a *standard*
+    // depth buffer it would be the biggest lever there is, but a logarithmic
+    // one (below) distributes depth by log2(1 + w) / log2(far + 1) — `near`
+    // does not appear, so moving it changes what gets clipped and nothing else.
+    // Worth stating because it is the first thing you reach for when surfaces
+    // tile, and here it does nothing: the depth buffer was measured at a full
+    // 24 bits, and the coplanar surfaces this bake used to show were a geometry
+    // problem, fixed by the offset tables in tools/offset-ground.py.
     const { near = 2, far = 80_000, fov = 60, ambientOcclusion = true } = options;
 
     this.renderer = new THREE.WebGLRenderer({

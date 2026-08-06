@@ -99,20 +99,30 @@ WALL_VARIANTS = (
 #
 # The step count is what decides how well this works: two coincident components
 # stay tied whenever their hashes pick the same step, so the collision rate is
-# 1/NUDGE_STEPS and nothing else changes it. The floor on the step *size* is the
-# Draco grid in tools/optimize-tiles.sh — 0.72 mm at 20 bits — since anything
-# finer is rounded away at compression time and the components come out coplanar
-# regardless of what this wrote. 2 mm clears that grid nearly threefold.
+# 1/NUDGE_STEPS and nothing else changes it.
 #
-# The range stops at 32 mm so it stays clear of the unlisted-colour fallback in
-# offset-ground.py, which starts at 33 mm. The two have to be disjoint rather
-# than merely different: both push along a surface's own normal, so a component
-# whose nudge equals a neighbour's fallback level is exactly coplanar with it,
-# and sharing one 2 mm lattice made that common rather than rare. 48 mm between
-# them is the whole budget, set by how far a wall can move before it visibly
-# separates from the wall it meets at a corner.
-NUDGE_STEP = 0.002
-NUDGE_STEPS = 16
+# The step *size* used to be set by the Draco grid in tools/optimize-tiles.sh —
+# 0.72 mm at 20 bits — on the reasoning that anything coarser survives
+# compression and is therefore separated. It survives compression and still
+# tiles on screen. The grid is a floor, not the requirement: the depth buffer,
+# float32 in the vertex shader and the angle a surface is seen at all eat into
+# the gap after compression is done with it. Measured with test/_sepsweep.mjs,
+# nothing below 8 mm changed the number of fighting pixels at all — 2 mm was
+# indistinguishable from applying no nudge whatsoever.
+#
+# So 8 mm, and four levels rather than sixteen. Two components colliding is now
+# 1 in 4 instead of 1 in 16, which is worse; but the fifteen non-colliding cases
+# in sixteen were all tiling anyway, so a quarter fighting beats all of them.
+#
+# The range stops at 32 mm so it stays clear of the offsets stacked above it in
+# offset-ground.py — windows at 40 mm, doors at 56, the unlisted-colour fallback
+# from 80. They have to be disjoint rather than merely different: all of them
+# push along a surface's own normal, so a component whose nudge equals a
+# neighbour's level is exactly coplanar with it. It also has to stop below the
+# windows and doors for a second reason — they carry their own colours and so
+# never receive this nudge, and a wall that overtook them would swallow them.
+NUDGE_STEP = 0.008
+NUDGE_STEPS = 4
 
 # (label, base colour, variants, nudge direction).
 #

@@ -63,17 +63,17 @@ import numpy as np
 # Anything finer than about 2 mm does not survive, wherever it is written.
 LAYERS = {
     "#a9bd8d": -0.120,  # TERRAIN_DEFAULT — the sheet everything else sits on
-    "#8fb573": -0.090,  # GRASS
-    "#7fa365": -0.086,  # SCRUB
-    "#6f9457": -0.082,  # HEDGE
-    "#a68f6d": -0.078,  # EARTH
-    "#dcc9a0": -0.074,  # SAND
-    "#ddd3c0": -0.070,  # SHELLS
-    "#9c968c": -0.060,  # RAIL_BALLAST
-    "#8a8580": -0.056,  # RAILWAY
-    "#b2aca2": -0.052,  # GRAVEL
-    "#aaa49a": -0.048,  # SCREE
-    "#b7b1a7": -0.044,  # PEBBLESTONE
+    "#8fb573": -0.104,  # GRASS
+    "#7fa365": -0.096,  # SCRUB
+    "#6f9457": -0.088,  # HEDGE
+    "#a68f6d": -0.080,  # EARTH
+    "#dcc9a0": -0.072,  # SAND
+    "#ddd3c0": -0.064,  # SHELLS
+    "#9c968c": -0.056,  # RAIL_BALLAST
+    "#8a8580": -0.048,  # RAILWAY
+    "#b2aca2": -0.040,  # GRAVEL
+    "#aaa49a": -0.032,  # SCREE
+    "#b7b1a7": -0.024,  # PEBBLESTONE
     # WATER, just under the carriageway.
     #
     # OSM2World draws a water body's top face at exactly y = 0, the same height
@@ -93,12 +93,12 @@ LAYERS = {
     # -material fallback below claims it and lifts the carriageway above its own
     # road markings.
     "#94948f": 0.0,  # ASPHALT
-    "#f2f2ee": 0.030,  # ROAD_MARKING and friends, painted onto the carriageway
-    "#d98a7a": 0.045,  # RED_ROAD_MARKING — cycle lanes, well clear of white paint
-    "#b4aea4": 0.086,  # SETT — pavements, genuinely above the road
-    "#aca69c": 0.090,  # UNHEWN_COBBLESTONE
-    "#c0bab0": 0.094,  # PAVING_STONE
-    "#c7c2b8": 0.098,  # CONCRETE
+    "#f2f2ee": 0.036,  # ROAD_MARKING and friends, painted onto the carriageway
+    "#d98a7a": 0.052,  # RED_ROAD_MARKING — cycle lanes, well clear of white paint
+    "#b4aea4": 0.076,  # SETT — pavements, genuinely above the road
+    "#aca69c": 0.086,  # UNHEWN_COBBLESTONE
+    "#c0bab0": 0.096,  # PAVING_STONE
+    "#c7c2b8": 0.106,  # CONCRETE
     "#c8c3ba": 0.120,  # KERB — the top of the stack, as on a real street
 }
 
@@ -141,17 +141,17 @@ RIGID = {
 # the fight rather than ending it.
 RAISED = {
     "#a2a8ae": 0.030,  # STEEL
-    "#6d7278": 0.034,  # SLATE
-    "#bd6f52": 0.038,  # TILES
-    "#79ad97": 0.042,  # COPPER_ROOF — the Bode's dome, among others
-    "#c0a068": 0.046,  # THATCH_ROOF
-    "#e8e6e0": 0.050,  # MARBLE
-    "#d8c9a4": 0.054,  # SANDSTONE
-    "#b5b0a6": 0.058,  # STONE
-    "#b06f5a": 0.062,  # BRICK
-    "#aac6d6": 0.066,  # GLASS_ROOF / GLASS — glazing over a courtyard
-    "#b3ccda": 0.070,  # GLASS_WALL, where it caps something
-    "#3f4a5c": 0.078,  # SOLAR_PANEL — genuinely mounted above the roof
+    "#6d7278": 0.040,  # SLATE
+    "#bd6f52": 0.050,  # TILES
+    "#79ad97": 0.060,  # COPPER_ROOF — the Bode's dome, among others
+    "#c0a068": 0.070,  # THATCH_ROOF
+    "#e8e6e0": 0.080,  # MARBLE
+    "#d8c9a4": 0.090,  # SANDSTONE
+    "#b5b0a6": 0.100,  # STONE
+    "#b06f5a": 0.110,  # BRICK
+    "#aac6d6": 0.120,  # GLASS_ROOF / GLASS — glazing over a courtyard
+    "#b3ccda": 0.130,  # GLASS_WALL, where it caps something
+    "#3f4a5c": 0.145,  # SOLAR_PANEL — genuinely mounted above the roof
 }
 
 # Surfaces pushed out along their own normal rather than upward, because they
@@ -169,18 +169,25 @@ RAISED = {
 # standing a couple of centimetres proud of its wall is what the real thing
 # does. Values stay small enough that the corner gaps opened by moving faces
 # independently are far below a pixel at any altitude you fly at.
+# Every value here also has to clear the *wall* nudge in vary-buildings.py, not
+# merely the neighbouring entries. A door carries its own colour, so it never
+# receives the nudge, while the wall it opens through is BUILDING_DEFAULT and
+# does — outward, by up to the nudge ceiling. Any door offset below that ceiling
+# is overtaken by its own wall and disappears into it, which is why these all
+# start above where the nudge stops rather than at the couple of centimetres a
+# real door stands proud.
 NORMAL_OFFSETS = {
-    "#c2bcb2": 0.025,  # GARAGE_DOOR — set into a concrete wall
-    "#8d7a63": 0.025,  # ENTRANCE_DEFAULT — doors, same story
-    "#9b7c55": 0.020,  # WOOD
-    "#a08560": 0.020,  # WOOD_WALL
-    "#a8adb2": 0.030,  # CHAIN_LINK_FENCE / METAL_FENCE / HANDRAIL_DEFAULT
-    "#9aa0a6": 0.035,  # METAL_FENCE_POST / POWER_TOWER_* — posts on their panel
-    "#cfd6da": 0.015,  # BUILDING_WINDOWS / SINGLE_WINDOW
-    "#aac6d6": 0.015,  # GLASS
-    "#b3ccda": 0.015,  # GLASS_WALL
-    "#c9c4bb": 0.030,  # ADVERTISING_POSTER / BUS_STOP_SIGN — mounted on things
-    "#d8d5cf": 0.030,  # FLAGCLOTH / TENNIS_NET
+    "#cfd6da": 0.040,  # BUILDING_WINDOWS / SINGLE_WINDOW
+    "#aac6d6": 0.040,  # GLASS
+    "#b3ccda": 0.040,  # GLASS_WALL
+    "#9b7c55": 0.048,  # WOOD
+    "#a08560": 0.048,  # WOOD_WALL
+    "#c2bcb2": 0.056,  # GARAGE_DOOR — set into a concrete wall
+    "#8d7a63": 0.056,  # ENTRANCE_DEFAULT — doors, same story
+    "#a8adb2": 0.064,  # CHAIN_LINK_FENCE / METAL_FENCE / HANDRAIL_DEFAULT
+    "#c9c4bb": 0.064,  # ADVERTISING_POSTER / BUS_STOP_SIGN — mounted on things
+    "#d8d5cf": 0.064,  # FLAGCLOTH / TENNIS_NET
+    "#9aa0a6": 0.072,  # METAL_FENCE_POST / POWER_TOWER_* — posts on their panel
 }
 
 # A triangle counts as ground if it is near-horizontal and near y = 0. Both
@@ -223,13 +230,33 @@ MATCH_EPS = 2.0e-3
 # families in the scan were all a roof variant against an OSM colour. Starting
 # above where the nudge ends makes it arithmetically impossible.
 #
-# The nudge takes 2-32 mm, so this takes the 33-48 mm above it, in 1 mm steps.
-# 1 mm still clears the 0.72 mm Draco grid, and unlike the steep case there is
-# no corner wedge to pay for — a recess in a roof is hidden by the wall in front
-# of it however deep it goes.
+# The step is 8 mm, and the reason it is not 1 mm is the whole point of this
+# block. Every lattice here was originally sized against the Draco grid — 1 mm
+# "clears 0.72 mm", so the surfaces are not coplanar and the job looked done.
+# They are not coplanar in the file and they still tile on screen, because the
+# grid is not what decides it: the depth buffer, float32 in the vertex shader
+# and the grazing angle a roof is seen at all erode the gap further.
+#
+# Measured, rather than reasoned about, with test/_sepsweep.mjs — it lifts one
+# colour's vertices in the live scene and counts pixels that flip under a 1 cm
+# camera jitter, which is what fighting actually is. Over the Humboldt Forum at
+# 150 m: 0.5 mm, 1 mm, 2 mm and 4 mm were all indistinguishable from no offset
+# at all (~2,140 flipping pixels); 8 mm was the first that moved the number
+# (1,834), 16 mm halved it (852), 32 mm reached the floor set by other pairs
+# still fighting (337). Anything under about 8 mm is not a smaller fix, it is
+# no fix.
+#
+# Fewer, wider levels is the trade that buys this. Two colours landing on the
+# same level are exactly coplanar and always fight, and that is now 1 in 8
+# rather than 1 in 16 — but every pair that does *not* collide is now genuinely
+# separated, where before all of them tiled anyway.
+#
+# The nudge takes 8-32 mm, so this takes the 40-96 mm above it. Unlike the steep
+# case there is no corner wedge to pay for — a recess in a roof is hidden by the
+# wall in front of it however deep it goes.
 FALLBACK_BASE = 0.032
-FALLBACK_STEPS = 16
-FALLBACK_STEP = 0.001
+FALLBACK_STEPS = 8
+FALLBACK_STEP = 0.008
 
 # The same idea for unlisted materials *inside* the ground band, which LAYERS
 # would own if it knew about them — a wooden boardwalk over stone paving, and
@@ -241,13 +268,16 @@ FALLBACK_STEP = 0.001
 # 6 mm, so borrowing the gap cannot create the ties this is here to remove.
 #
 # The first version used the much wider gap higher up, between the markings and
-# the pavements, and so lifted these surfaces 50-82 mm. That was chosen purely
-# to avoid colliding with other levels, without asking how large the lift needed
-# to be: it only has to clear the 0.72 mm Draco grid, and 8 cm at the edge of a
-# large plaza is a visible lip.
-GROUND_FALLBACK_BASE = 0.004
-GROUND_FALLBACK_STEP = 0.002
-GROUND_FALLBACK_STEPS = 9
+# the pavements, and so lifted these surfaces 50-82 mm — chosen purely to avoid
+# colliding with other levels, without asking how large the lift needed to be,
+# and 8 cm at the edge of a large plaza is a visible lip.
+#
+# The gap this borrows is only 36 mm tall, so it buys three levels at the 8 mm
+# the screen needs rather than nine at a 2 mm nobody can see. Three is few, but
+# the alternative is nine levels that all tile against each other.
+GROUND_FALLBACK_BASE = 0.000
+GROUND_FALLBACK_STEP = 0.008
+GROUND_FALLBACK_STEPS = 3
 
 # And once more for vertical faces, which is where the rest of it turned out to
 # be — measured across the world after the two passes above, 96% of every
@@ -263,12 +293,17 @@ GROUND_FALLBACK_STEPS = 9
 #
 # The ceiling is the corner wedge. A wall pushed along its own normal separates
 # from the wall it meets at an outside corner, since the two faces travel in
-# different directions; the nudge already does this at up to 48 mm and is
-# invisible at street level, so 48 mm total is the budget. vary-buildings takes
-# 2-32 mm of it and this takes the 33-48 mm above.
-STEEP_FALLBACK_BASE = 0.032
-STEEP_FALLBACK_STEPS = 16
-STEEP_FALLBACK_STEP = 0.001
+# different directions, and the notch that opens is as wide as the push.
+#
+# That budget and the 8 mm the screen needs cannot both be had at sixteen
+# levels, so this takes six: 80-128 mm, above the fence posts at 72 mm. A 128 mm
+# notch is about five pixels at the twenty metres you would have to be at to
+# look into a building's corner, against a facade that tiled over its whole area
+# at any distance before. The notch is worth it; it is also static, and a
+# flicker is what the eye actually catches.
+STEEP_FALLBACK_BASE = 0.072
+STEEP_FALLBACK_STEPS = 6
+STEEP_FALLBACK_STEP = 0.008
 
 # The default roof and wall colours, which vary-buildings.py owns.
 #
@@ -279,6 +314,70 @@ STEEP_FALLBACK_STEP = 0.001
 # per-component nudge, and an unlisted neighbour still moves relative to them
 # whether they move or not.
 VARIED_BASES = ("#c4694a", "#e6dfd1")
+
+# The floor every table above is built on, measured rather than assumed.
+#
+# test/_sepsweep.mjs lifts one colour's vertices in the running scene and counts
+# the pixels that flip when the camera moves a centimetre, which is what
+# z-fighting is. Below 8 mm the count does not move: 1 mm and 4 mm separations
+# tile exactly as much as no separation at all. The tables were previously
+# spaced 1-5 mm, on the reasoning that clearing the 0.72 mm Draco grid was
+# enough — it is a necessary floor, not a sufficient one, because the depth
+# buffer and the vertex shader's float32 erode the gap after compression is done
+# with it.
+MIN_SEPARATION = 0.008
+
+# vary-buildings.py nudges default-coloured components along their own normal,
+# and stops at NUDGE_STEP * NUDGE_STEPS. Everything here that moves the same way
+# has to clear that ceiling, so it is duplicated rather than imported — the two
+# tools do not share a module, and a silent drift between them is exactly the
+# collision this whole scheme exists to prevent.
+NUDGE_CEILING = 0.008 * 4
+
+
+def _check_separations() -> None:
+    """Fail loudly if any two levels that could coincide are too close.
+
+    Every offset here is hand-placed against physical intent — a kerb stands
+    above a pavement, a door proud of its wall — so the ordering cannot be
+    generated. What can be checked is that no two of them landed within the
+    distance the screen can actually resolve, which is how the 4 mm ground
+    clusters and the 1 mm lattices went unnoticed for so long.
+    """
+    groups = {
+        # Ground layers plus the fallback levels that borrow the gap above
+        # asphalt; all are horizontal and near y = 0, so any pair can coincide.
+        "ground": sorted(
+            set(LAYERS.values())
+            | {GROUND_FALLBACK_BASE + (i + 1) * GROUND_FALLBACK_STEP for i in range(GROUND_FALLBACK_STEPS)}
+        ),
+        # Steep faces: the wall nudge, the detail set into walls, and the
+        # unlisted-colour fallback all push outward along the same normal.
+        "steep": sorted(
+            {(i + 1) * (NUDGE_CEILING / 4) for i in range(4)}
+            | set(NORMAL_OFFSETS.values())
+            | {STEEP_FALLBACK_BASE + (i + 1) * STEEP_FALLBACK_STEP for i in range(STEEP_FALLBACK_STEPS)}
+        ),
+        # Roof coverings, lifted clear of the structure they clad.
+        "raised": sorted(set(RAISED.values())),
+        # Roofs recessed into the building: the nudge, then the fallback above
+        # it. Both travel inward, so they share one axis.
+        "roof": sorted(
+            {(i + 1) * (NUDGE_CEILING / 4) for i in range(4)}
+            | {FALLBACK_BASE + (i + 1) * FALLBACK_STEP for i in range(FALLBACK_STEPS)}
+        ),
+    }
+    for name, levels in groups.items():
+        for lo, hi in zip(levels, levels[1:]):
+            if hi - lo < MIN_SEPARATION - 1e-9:
+                raise SystemExit(
+                    f"offset-ground: {name} levels {lo * 1000:.0f} mm and {hi * 1000:.0f} mm are "
+                    f"{(hi - lo) * 1000:.1f} mm apart, below the {MIN_SEPARATION * 1000:.0f} mm "
+                    "the renderer resolves — they will tile against each other"
+                )
+
+
+_check_separations()
 
 
 def srgb_to_linear(c: float) -> float:
