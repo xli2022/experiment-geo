@@ -214,11 +214,22 @@ MATCH_EPS = 2.0e-3
 # there to fix. Displacing inward sinks the face into the solid it bounds
 # instead, where the wall in front of it occludes the offset entirely.
 #
-# Twelve steps of 2 mm, so the deepest recess is 24 mm. 2 mm still clears the
-# 0.72 mm Draco grid nearly threefold, which is all the separation a depth
-# buffer needs; the old 4 mm bought nothing and cost twice the visible depth.
-FALLBACK_STEPS = 12
-FALLBACK_STEP = 0.002
+# Like STEEP_FALLBACK below, this range has to sit *clear of* the per-component
+# nudge in vary-buildings.py rather than merely differ from it. Both push a roof
+# face the same way — down, into the building — so sharing one 2 mm lattice over
+# an overlapping range means an OSM-coloured roof whose level equals a varied
+# neighbour's nudge is exactly coplanar with it. That is not a rare collision:
+# it was 5,700 of the 16,676 conflicts left across the world, and the largest
+# families in the scan were all a roof variant against an OSM colour. Starting
+# above where the nudge ends makes it arithmetically impossible.
+#
+# The nudge takes 2-32 mm, so this takes the 33-48 mm above it, in 1 mm steps.
+# 1 mm still clears the 0.72 mm Draco grid, and unlike the steep case there is
+# no corner wedge to pay for — a recess in a roof is hidden by the wall in front
+# of it however deep it goes.
+FALLBACK_BASE = 0.032
+FALLBACK_STEPS = 16
+FALLBACK_STEP = 0.001
 
 # The same idea for unlisted materials *inside* the ground band, which LAYERS
 # would own if it knew about them — a wooden boardwalk over stone paving, and
@@ -446,7 +457,8 @@ def process(path: str, layers, rigid, along, raised, varied) -> int | None:
                 codes = (q[:, 0] << 24) | (q[:, 1] << 12) | q[:, 2]
                 for code in np.unique(codes):
                     verts = where[codes == code]
-                    dist = ((stable_hash(int(code)) % FALLBACK_STEPS) + 1) * FALLBACK_STEP
+                    step = (stable_hash(int(code)) % FALLBACK_STEPS) + 1
+                    dist = FALLBACK_BASE + step * FALLBACK_STEP
                     # Minus: into the solid the face bounds, never off it.
                     positions[verts] -= normals[verts] * dist
                     moved += len(verts)
