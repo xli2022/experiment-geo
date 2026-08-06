@@ -104,21 +104,21 @@ def rtc_center(feature: dict, gltf: dict) -> list[float] | None:
     return None
 
 
-def bake_rtc(gltf: dict, center: list[float]) -> None:
-    """Fold the offset into a new root node, and drop the extension.
+def strip_rtc_extension(gltf: dict) -> None:
+    """Remove CESIUM_RTC. The offset is carried by the tile transform instead.
 
-    A new parent rather than editing the existing roots: a root may already
-    carry a matrix, and composing a translation into an arbitrary matrix is
-    easy to get subtly wrong. Wrapping is always correct.
+    It must not go into a glTF node, which is where this first put it. 3D Tiles
+    applies a Y-up to Z-up conversion to glTF content, so a translation inside
+    the glTF is rotated by it — while RTC_CENTER in a b3dm is applied outside
+    the glTF, in the tile's own frame, and is not. Baking an ECEF-magnitude
+    vector into a node therefore rotates it into nonsense: measured, Tokyo's
+    geometry landed 7,200 km from where the camera was placed, with the tileset
+    loading cleanly and rendering nothing.
+
+    The tile's `transform` is the same frame RTC_CENTER lives in, so it is both
+    correct and out of reach of anything that rewrites the glTF — which matters,
+    because gltf-transform legitimately flattens node hierarchies.
     """
-    nodes = gltf.setdefault("nodes", [])
-    for scene in gltf.get("scenes", []):
-        roots = scene.get("nodes", [])
-        if not roots:
-            continue
-        nodes.append({"translation": center, "children": list(roots)})
-        scene["nodes"] = [len(nodes) - 1]
-
     if "extensions" in gltf:
         gltf["extensions"].pop("CESIUM_RTC", None)
         if not gltf["extensions"]:
@@ -136,34 +136,47 @@ def convert_tile(path: str) -> str:
     gltf, binary, _ = parse_glb(glb)
 
     center = rtc_center(feature, gltf)
-    if center:
-        bake_rtc(gltf, center)
+    strip_rtc_extension(gltf)
 
     out = path[: -len(".b3dm")] + ".glb"
     with open(out, "wb") as fh:
         fh.write(write_glb(gltf, binary))
     os.remove(path)
-    return out
+    return out, center
 
 
-def retarget_tilesets(root: str) -> int:
-    """Point every content URI at the .glb that replaced its .b3dm."""
+def retarget_tilesets(root: str, centers: dict[str, list[float]]) -> int:
+    """Point content URIs at the new .glb, and carry each tile's RTC offset.
+
+    The offset becomes the tile's `transform`, which is where 3D Tiles expects
+    a placement and where RTC_CENTER effectively lived before.
+    """
     changed = 0
 
-    def fix(node: dict) -> None:
+    def fix(node: dict, base: str) -> None:
         nonlocal changed
         content = node.get("content")
         if content and content.get("uri", "").endswith(".b3dm"):
             content["uri"] = content["uri"][: -len(".b3dm")] + ".glb"
             changed += 1
+            key = os.path.normpath(os.path.join(base, content["uri"]))
+            center = centers.get(key)
+            if center and "transform" not in node:
+                # glTF matrices are column-major, so the translation is last.
+                node["transform"] = [
+                    1.0, 0.0, 0.0, 0.0,
+                    0.0, 1.0, 0.0, 0.0,
+                    0.0, 0.0, 1.0, 0.0,
+                    center[0], center[1], center[2], 1.0,
+                ]
         for child in node.get("children", []):
-            fix(child)
+            fix(child, base)
 
     for path in glob.glob(os.path.join(root, "**", "*.json"), recursive=True):
         doc = json.load(open(path))
         if "root" not in doc:
             continue
-        fix(doc["root"])
+        fix(doc["root"], os.path.dirname(path))
         # The container is the only thing that made this 1.0 rather than 1.1.
         doc.setdefault("asset", {})["version"] = "1.1"
         json.dump(doc, open(path, "w"), separators=(",", ":"))
@@ -181,16 +194,14 @@ def main() -> int:
         return 0
 
     before = sum(os.path.getsize(t) for t in tiles)
-    rtc = 0
+    centers: dict[str, list[float]] = {}
     for path in tiles:
-        blob = open(path, "rb").read()
-        feature, glb = split_b3dm(blob)
-        gltf, _, _ = parse_glb(glb)
-        if rtc_center(feature, gltf):
-            rtc += 1
-        convert_tile(path)
+        out, center = convert_tile(path)
+        if center:
+            centers[os.path.normpath(out)] = center
+    rtc = len(centers)
 
-    refs = retarget_tilesets(args.tiles_dir)
+    refs = retarget_tilesets(args.tiles_dir, centers)
     after = sum(
         os.path.getsize(p)
         for p in glob.glob(os.path.join(args.tiles_dir, "**", "*.glb"), recursive=True)
