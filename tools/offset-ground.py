@@ -315,6 +315,29 @@ STEEP_FALLBACK_STEP = 0.008
 # whether they move or not.
 VARIED_BASES = ("#c4694a", "#e6dfd1")
 
+# Why this is done in the geometry at all, rather than at render time.
+#
+# Moving surfaces in metres has an obvious flaw: the displacement has to be big
+# enough to survive depth precision at viewing range and small enough not to
+# reorder surfaces that genuinely sit centimetres apart, and on this scene those
+# two wants do not overlap. A depth bias in the fragment shader looks like the
+# way out — it is expressed in depth-buffer units, so it is worth the same
+# number of bits at any distance, and it moves nothing, so it cannot reorder
+# anything.
+#
+# It was tried, and it is worse. Hashing the vertex colour to a depth offset
+# took flips under a 1 cm camera jitter from 1,145 to 2,888 at 2e-5 and 4,819 at
+# 1e-4 — monotonically worse the harder it was applied.
+#
+# The reason is that a shader cannot tell which surfaces are coplanar. It biases
+# every one of them, including all the pairs the depth buffer already gets right
+# — a wall against the roof it carries, a building against the ground it stands
+# on — so it buys separation where surfaces coincide and spends it everywhere
+# else. What makes the tables below work is not the size of the numbers, it is
+# that something measured which triangles actually share a plane before moving
+# any of them. That selectivity is the whole value, and it is not available at
+# render time.
+#
 # The floor every table above is built on, measured rather than assumed.
 #
 # test/_sepsweep.mjs lifts one colour's vertices in the running scene and counts
