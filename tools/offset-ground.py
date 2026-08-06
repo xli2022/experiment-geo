@@ -202,23 +202,40 @@ MATCH_EPS = 2.0e-3
 # happened to be zero.
 #
 # Hashing the colour gives every one of them a level without anyone enumerating
-# it. Sixteen steps of 4 mm stays well inside the range the tables above use,
-# and clears the 0.72 mm Draco grid more than fivefold. The step is never zero:
-# an unlisted surface must end up clear of anything that was not moved at all.
-FALLBACK_STEPS = 16
-FALLBACK_STEP = 0.004
+# it. The step is never zero: an unlisted surface must end up clear of anything
+# that was not moved at all.
+#
+# It displaces *into* the surface, against its own normal, and that direction is
+# the whole design. Pushed the other way, a roof's horizontal face lifts off the
+# walls it sits on and leaves a slot you can see the sky through — the first
+# version did exactly that, at +44 mm on the default terracotta before the
+# per-component nudge in vary-buildings.py added up to 48 mm more, and a 9 cm
+# gap along every eaves line is a far worse artifact than the z-fighting it was
+# there to fix. Displacing inward sinks the face into the solid it bounds
+# instead, where the wall in front of it occludes the offset entirely.
+#
+# Twelve steps of 2 mm, so the deepest recess is 24 mm. 2 mm still clears the
+# 0.72 mm Draco grid nearly threefold, which is all the separation a depth
+# buffer needs; the old 4 mm bought nothing and cost twice the visible depth.
+FALLBACK_STEPS = 12
+FALLBACK_STEP = 0.002
 
 # The same idea for unlisted materials *inside* the ground band, which LAYERS
 # would own if it knew about them — a wooden boardwalk over stone paving, and
 # anything else surfaced with a material nobody thought to enumerate.
 #
-# These go in the gap LAYERS leaves between the road markings at 45 mm and the
-# pavements at 86 mm: above the carriageway, below the kerb, which is where a
-# surface that is not a road belongs. Every level clears its nearest LAYERS
-# neighbour by at least 4 mm, so borrowing the gap cannot create the ties this
-# is here to remove.
-GROUND_FALLBACK_BASE = 0.046
-GROUND_FALLBACK_STEP = 0.004
+# These sit just above the carriageway, in the gap LAYERS leaves between ASPHALT
+# at 0 and the road markings at 30 mm — a surface that is not a road, resting on
+# the road surface. Every level clears its nearest LAYERS neighbour by at least
+# 6 mm, so borrowing the gap cannot create the ties this is here to remove.
+#
+# The first version used the much wider gap higher up, between the markings and
+# the pavements, and so lifted these surfaces 50-82 mm. That was chosen purely
+# to avoid colliding with other levels, without asking how large the lift needed
+# to be: it only has to clear the 0.72 mm Draco grid, and 8 cm at the edge of a
+# large plaza is a visible lip.
+GROUND_FALLBACK_BASE = 0.004
+GROUND_FALLBACK_STEP = 0.002
 GROUND_FALLBACK_STEPS = 9
 
 # And once more for vertical faces, which is where the rest of it turned out to
@@ -419,6 +436,8 @@ def process(path: str, layers, rigid, along, raised, varied) -> int | None:
                 spare &= ~np.all(np.abs(colors - base) < MATCH_EPS, axis=1)
             for base, _ in rigid:
                 spare &= ~np.all(np.abs(colors - base) < MATCH_EPS, axis=1)
+            for base in varied:
+                spare &= ~np.all(np.abs(colors - base) < MATCH_EPS, axis=1)
             if spare.any():
                 where = np.nonzero(spare)[0]
                 # Quantise before hashing, so float noise between bakes cannot
@@ -428,7 +447,8 @@ def process(path: str, layers, rigid, along, raised, varied) -> int | None:
                 for code in np.unique(codes):
                     verts = where[codes == code]
                     dist = ((stable_hash(int(code)) % FALLBACK_STEPS) + 1) * FALLBACK_STEP
-                    positions[verts] += normals[verts] * dist
+                    # Minus: into the solid the face bounds, never off it.
+                    positions[verts] -= normals[verts] * dist
                     moved += len(verts)
 
             # Steep faces no table covers, at any height. NORMAL_OFFSETS already

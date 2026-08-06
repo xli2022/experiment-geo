@@ -114,10 +114,20 @@ WALL_VARIANTS = (
 NUDGE_STEP = 0.002
 NUDGE_STEPS = 16
 
-# (label, base colour, variants). Order matters only for reporting.
+# (label, base colour, variants, nudge direction).
+#
+# The direction matters more than the distance. A roof's faces point at the sky,
+# so nudging one outward lifts it clear of the walls it sits on and leaves a slot
+# you can see straight through along the whole eaves line — a far worse artifact
+# than the z-fighting the nudge exists to end. Inward sinks it into the building
+# instead, where the walls in front of it hide the offset completely.
+#
+# Walls are the opposite: outward buries a shared party wall in the neighbour it
+# abuts, which is invisible, while inward would pull the two apart and open the
+# gap between them. So each goes the way that moves it into solid geometry.
 TARGETS = (
-    ("roof", ROOF_BASE, ROOF_VARIANTS),
-    ("wall", WALL_BASE, WALL_VARIANTS),
+    ("roof", ROOF_BASE, ROOF_VARIANTS, -1.0),
+    ("wall", WALL_BASE, WALL_VARIANTS, +1.0),
 )
 
 # How close a vertex colour must be to ROOF_BASE (in linear space, per channel)
@@ -157,7 +167,7 @@ def main() -> int:
         return fail(f"no .glb under {args.tiles_dir}")
 
     targets = []
-    for label, base, variants in TARGETS:
+    for label, base, variants, direction in TARGETS:
         base_lin = np.array(hex_to_linear(base))
         spread = np.array([hex_to_linear(v) for v in variants])
         if label == "wall":
@@ -166,9 +176,9 @@ def main() -> int:
             # written. Interpolating in linear space keeps the midpoints from
             # drifting dark the way an sRGB blend would.
             spread = base_lin + (spread - base_lin) * args.wall_strength
-        targets.append((label, base_lin, spread))
+        targets.append((label, base_lin, spread, direction))
 
-    totals: dict[str, int] = {label: 0 for label, _, _ in TARGETS}
+    totals: dict[str, int] = {label: 0 for label, *_ in TARGETS}
     total_tiles = 0
     for path in paths:
         counts = process(path, targets, args.weld)
@@ -196,7 +206,7 @@ def process(path: str, targets: list, weld: float) -> dict[str, int] | None:
     bin_off = 20 + json_len + 8
     binary = bytearray(data[bin_off:])
 
-    counts = {label: 0 for label, _, _ in targets}
+    counts = {label: 0 for label, *_ in targets}
     changed = False
     for mesh in gltf.get("meshes", []):
         for prim in mesh.get("primitives", []):
@@ -217,7 +227,7 @@ def process(path: str, targets: list, weld: float) -> dict[str, int] | None:
             if tris is None:
                 continue
 
-            for name, base, variants in targets:
+            for name, base, variants, direction in targets:
                 matched = np.all(np.abs(colors - base) < MATCH_EPS, axis=1)
                 target_tris = tris[np.all(matched[tris], axis=1)]
                 if not len(target_tris):
@@ -249,7 +259,7 @@ def process(path: str, targets: list, weld: float) -> dict[str, int] | None:
                         # one step of the hash landing on zero was what left
                         # those pairs fighting.
                         positions[verts] += normals[verts] * (
-                            ((h % NUDGE_STEPS) + 1) * NUDGE_STEP
+                            direction * ((h % NUDGE_STEPS) + 1) * NUDGE_STEP
                         )
                     counts[name] += 1
                     changed = True
