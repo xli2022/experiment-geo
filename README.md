@@ -90,6 +90,28 @@ The palette lives in `tools/make-lowpoly-config.py` and is muted on purpose. OSM
 ships `ROOF_DEFAULT` as `#cc0000`, pillar-box red; at city scale saturated defaults read
 as a fairground rather than a city.
 
+### Lighting, and one thing the renderer has to get right
+
+Flat colour has no texture detail to imply form, so the lighting carries all of it. The
+balance is deliberately sun-dominant: a strong directional key with a modest hemisphere
+fill, because under a strong ambient term every face of a box receives nearly the same
+light and the shape disappears — which is most of why untextured buildings read as coloured
+cubes. Ground-contact occlusion does the rest, since without it the join between a wall and
+the pavement is a hard colour change and nothing else.
+
+**Screen-space effects and `logarithmicDepthBuffer` do not compose by default.** three.js
+injects `USE_LOGARITHMIC_DEPTH_BUFFER` into *every* material when the renderer asks for log
+depth, including the `MeshNormalMaterial` that `GTAOPass` uses for its own depth prepass —
+but `GTAOShader` unprojects that depth with `perspectiveDepthToViewZ`, the formula for an
+ordinary buffer. The result is not subtly off: against an 80 km far plane a surface 100 m
+away reconstructs as 3.4 m away, and its neighbour a metre behind it reconstructs 4 mm
+further, so every occlusion test answers on rounding noise and what reaches the screen is
+the pass's own 5×5 sampling pattern — a fixed halftone over every facade that reads exactly
+like z-fighting. `src/engine/gtaoLogDepth.ts` recovers the view distance from the log
+encoding; both shaders route through one `getViewPosition`, so that is the whole fix. It
+throws rather than degrades if a three.js upgrade rewrites the shader, because the silent
+failure mode sends you hunting in the geometry for a week.
+
 ### Two routes that were tried and rejected
 
 Both are still in the tree, because the measurements are worth keeping.
@@ -145,6 +167,9 @@ tools/offset-ground.py public/tiles/berlin
 tools/vary-buildings.py public/tiles/berlin
 tools/optimize-tiles.sh public/tiles/berlin --no-simplify
 tools/make-root-tileset.py public/tiles/berlin
+
+# 5. Check the result — every surface that still shares a plane with another
+tools/find-coplanar.py public/tiles/berlin
 ```
 
 `offset-ground.py` fixes the z-fighting along kerbs, road edges and area
@@ -157,6 +182,21 @@ setting fixes that: a depth buffer cannot order coplanar surfaces, `logarithmicD
 offset has nothing to bias against because a tile is a single material. So the tool pushes
 each layer to its own height, in the order a street is built — 8 cm across the whole stack,
 invisible in flight and orders of magnitude more than the depth buffer needs.
+
+It does the same above ground for roof coverings, and along their own normals rather than
+straight up, so a dome separates from its structure everywhere instead of splitting at the
+top and staying welded at the sides. **Water gets its own layer just under the
+carriageway**: OSM2World draws a water body's top face at exactly `y = 0`, the same height
+as the quays and bridge approaches along its banks, and that alone was ~121,000 of the
+252,696 coincident pairs in the world. Down rather than up, because a quay stands above the
+river beside it.
+
+The last two passes are hashes rather than tables. Every table here is an enumeration and
+OSM2World does not draw from a closed set — with `useBuildingColors` on it writes whatever
+`building:colour` and `roof:colour` say — so a roof can arrive in a colour nothing
+anticipates, matching no table and no variant in `vary-buildings.py` either. Those were the
+only surfaces in the world still getting no offset at all. Hashing the colour to a level
+covers them without anyone enumerating them.
 
 `vary-buildings.py` runs on the raw bake, before compression — Draco-compressed
 accessors have no readable buffer view. OSM2World assigns materials per *feature
@@ -186,9 +226,28 @@ blank.
 Note `--no-simplify`: `optimize-tiles.sh` otherwise runs a lossy geometry simplify pass,
 and crisp edges are the entire point of this style. The tiles are small enough without it.
 
-### Four things the bake has to get right
+### Six things the bake has to get right
 
 Each of these fails quietly — you get output, it is just wrong.
+
+**Draco's quantization grid can be coarser than the geometry you carefully placed.** It
+snaps positions onto a *uniform* grid sized by the mesh's largest extent, so on a 750 m
+tile every axis — including height — shares one step: 45.8 mm at the default 14 bits,
+11.4 mm at 16 (measured, not inferred). The separations `offset-ground.py` and
+`vary-buildings.py` apply run from 4 mm up, so at 16 bits the finer half of them rounded
+straight back to a shared height and the surfaces came out exactly coplanar again —
+**6,670 of 11,466 coincident pairs in one tile existed only because of the grid**. The
+offsets were all applied correctly; nothing in the tools was wrong; the world still
+z-fought. `QUANTIZE_POSITION` is 20 bits (0.72 mm) for that reason, at 1.44× the bytes.
+`tools/find-coplanar.py` is what measures this — it works on the geometry rather than on
+rendered pixels, so it finds every conflict in the world regardless of where the camera is
+or how much depth precision the GPU rendering it happens to have.
+
+**gltf-transform picks its container from the file extension.** Writing to a temporary name
+like `$glb.opt` produced glTF JSON with the buffer in a sidecar `.bin`, which was then
+moved onto a `.glb` path — so every tile shipped as a JSON file named `.glb` with a second
+file beside it. It loaded fine (three.js sniffs the magic and falls back), which is exactly
+why it went unnoticed for so long; it just cost two requests per tile instead of one.
 
 **OSM2World renders the whole input file into every tile.** The tile argument only chooses
 the output path; it does not clip geometry. Baking a multi-tile area from one input cut

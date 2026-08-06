@@ -95,12 +95,24 @@ WALL_VARIANTS = (
 # visible flicker across whole roofs and facades.
 #
 # Nudging by component rather than by material is what separates them, since
-# they are the same material by definition. Eight steps of 6 mm is far below
-# what reads as a step and far above the 0.11 mm quantization grid. The step
-# count matters: two coincident components collide whenever their hashes pick
-# the same step, so four steps left a quarter of them still tied.
-NUDGE_STEP = 0.006
-NUDGE_STEPS = 8
+# they are the same material by definition.
+#
+# The step count is what decides how well this works: two coincident components
+# stay tied whenever their hashes pick the same step, so the collision rate is
+# 1/NUDGE_STEPS and nothing else changes it. The floor on the step *size* is the
+# Draco grid in tools/optimize-tiles.sh — 0.72 mm at 20 bits — since anything
+# finer is rounded away at compression time and the components come out coplanar
+# regardless of what this wrote. 2 mm clears that grid nearly threefold.
+#
+# The range stops at 32 mm so it stays clear of the unlisted-colour fallback in
+# offset-ground.py, which starts at 33 mm. The two have to be disjoint rather
+# than merely different: both push along a surface's own normal, so a component
+# whose nudge equals a neighbour's fallback level is exactly coplanar with it,
+# and sharing one 2 mm lattice made that common rather than rare. 48 mm between
+# them is the whole budget, set by how far a wall can move before it visibly
+# separates from the wall it meets at a corner.
+NUDGE_STEP = 0.002
+NUDGE_STEPS = 16
 
 # (label, base colour, variants). Order matters only for reporting.
 TARGETS = (
@@ -231,8 +243,13 @@ def process(path: str, targets: list, weld: float) -> dict[str, int] | None:
                     if normals is not None:
                         # Same hash, so a component's nudge is as stable across
                         # re-bakes as its colour.
+                        # +1 so the nudge is never zero. A component that does
+                        # not move stays tied to every neighbour this tool never
+                        # touched — an OSM-coloured roof, a concrete deck — and
+                        # one step of the hash landing on zero was what left
+                        # those pairs fighting.
                         positions[verts] += normals[verts] * (
-                            (h % NUDGE_STEPS) * NUDGE_STEP
+                            ((h % NUDGE_STEPS) + 1) * NUDGE_STEP
                         )
                     counts[name] += 1
                     changed = True

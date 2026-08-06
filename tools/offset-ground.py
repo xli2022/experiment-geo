@@ -54,13 +54,13 @@ import numpy as np
 # than ending it.
 #
 # The step floor is set by the compressor, not by taste. Draco quantizes
-# positions onto a uniform grid sized by the mesh's largest extent. An earlier
-# version of this table used 5-20 mm steps against Draco's *default* 14 bits,
-# which is a 45.8 mm grid on a 750 m tile — every separation below half a step
-# collapsed back to a shared height during compression, so the offsets were
-# applied correctly and then silently undone. At the 16 bits
-# tools/optimize-tiles.sh now requests the grid measures 0.11 mm, so the 4 mm
-# sub-steps here have ample headroom.
+# positions onto a uniform grid sized by the mesh's largest extent, so on a
+# 750 m tile every axis — including height — shares one step: 45.8 mm at Draco's
+# default 14 bits, 11.4 mm at 16. Both are coarser than the 4 mm sub-steps here,
+# so the offsets were applied correctly and then silently undone at compression
+# time, and the surfaces came back out exactly coplanar. tools/optimize-tiles.sh
+# asks for 20 bits, which measures 0.72 mm — the sub-steps clear it fivefold.
+# Anything finer than about 2 mm does not survive, wherever it is written.
 LAYERS = {
     "#a9bd8d": -0.120,  # TERRAIN_DEFAULT — the sheet everything else sits on
     "#8fb573": -0.090,  # GRASS
@@ -74,7 +74,25 @@ LAYERS = {
     "#b2aca2": -0.052,  # GRAVEL
     "#aaa49a": -0.048,  # SCREE
     "#b7b1a7": -0.044,  # PEBBLESTONE
-    # ASPHALT stays at 0 — it is the reference the rest are placed around.
+    # WATER, just under the carriageway.
+    #
+    # OSM2World draws a water body's top face at exactly y = 0, the same height
+    # as the roads and plazas along its banks — 68,176 m² of water against
+    # 31,100 m² of asphalt in one z15 tile, sharing a plane wherever a quay or a
+    # bridge approach overlaps the riverbank polygon. That is the largest single
+    # source of coincident surfaces left in the world once compression stops
+    # erasing the rest: 4,579 conflicting pairs in that one tile.
+    #
+    # Down rather than up, because a quay stands above the river it runs beside,
+    # so asphalt winning the overlap is also the correct picture. Water still
+    # sits 110 mm clear of the terrain sheet, so a river reads as water and not
+    # as ground.
+    "#7fa8c4": -0.010,
+    # ASPHALT is the reference the rest are placed around, so its offset is
+    # zero — but it has to be listed rather than left implicit, or the unlisted
+    # -material fallback below claims it and lifts the carriageway above its own
+    # road markings.
+    "#94948f": 0.0,  # ASPHALT
     "#f2f2ee": 0.030,  # ROAD_MARKING and friends, painted onto the carriageway
     "#d98a7a": 0.045,  # RED_ROAD_MARKING — cycle lanes, well clear of white paint
     "#b4aea4": 0.086,  # SETT — pavements, genuinely above the road
@@ -173,6 +191,67 @@ GROUND_BAND = 1.5  # metres either side of y = 0
 
 MATCH_EPS = 2.0e-3
 
+# Every table above is an enumeration, and OSM2World does not draw from a closed
+# set. With `useBuildingColors` on it writes whatever `building:colour` and
+# `roof:colour` say, so a roof arrives in whatever colour a mapper typed. Those
+# roofs match no table here, and they also match nothing in vary-buildings,
+# which keys on the default roof colour — so they were the only surfaces in the
+# world still receiving no offset at all. Measured on one z15 tile, they were
+# 195 of the 212 conflicts left once compression stopped erasing the rest: an
+# OSM-coloured roof at exactly 7.5 m against a varied neighbour whose nudge
+# happened to be zero.
+#
+# Hashing the colour gives every one of them a level without anyone enumerating
+# it. Sixteen steps of 4 mm stays well inside the range the tables above use,
+# and clears the 0.72 mm Draco grid more than fivefold. The step is never zero:
+# an unlisted surface must end up clear of anything that was not moved at all.
+FALLBACK_STEPS = 16
+FALLBACK_STEP = 0.004
+
+# The same idea for unlisted materials *inside* the ground band, which LAYERS
+# would own if it knew about them — a wooden boardwalk over stone paving, and
+# anything else surfaced with a material nobody thought to enumerate.
+#
+# These go in the gap LAYERS leaves between the road markings at 45 mm and the
+# pavements at 86 mm: above the carriageway, below the kerb, which is where a
+# surface that is not a road belongs. Every level clears its nearest LAYERS
+# neighbour by at least 4 mm, so borrowing the gap cannot create the ties this
+# is here to remove.
+GROUND_FALLBACK_BASE = 0.046
+GROUND_FALLBACK_STEP = 0.004
+GROUND_FALLBACK_STEPS = 9
+
+# And once more for vertical faces, which is where the rest of it turned out to
+# be — measured across the world after the two passes above, 96% of every
+# conflict left was steep, and nearly all of it facades carrying a
+# `building:colour` a mapper typed.
+#
+# This range has to sit *clear of* the per-component nudge in vary-buildings.py,
+# not merely differ from it. The first version used the same 2 mm lattice over an
+# overlapping range, and a varied wall whose component nudge happened to equal an
+# OSM-coloured neighbour's level came out exactly coplanar anyway — 650 of the
+# 688 conflicts left on a test tile were one such pair. Starting above where the
+# nudge ends makes that arithmetically impossible rather than unlikely.
+#
+# The ceiling is the corner wedge. A wall pushed along its own normal separates
+# from the wall it meets at an outside corner, since the two faces travel in
+# different directions; the nudge already does this at up to 48 mm and is
+# invisible at street level, so 48 mm total is the budget. vary-buildings takes
+# 2-32 mm of it and this takes the 33-48 mm above.
+STEEP_FALLBACK_BASE = 0.032
+STEEP_FALLBACK_STEPS = 16
+STEEP_FALLBACK_STEP = 0.001
+
+# The default roof and wall colours, which vary-buildings.py owns.
+#
+# Excluding them here costs nothing and keeps the corner wedge inside today's
+# budget. Every surface carrying one of these shares a single colour, so a hash
+# would give them all the *same* level — which cannot separate them from each
+# other, only add to how far they travel. What does separate them is the
+# per-component nudge, and an unlisted neighbour still moves relative to them
+# whether they move or not.
+VARIED_BASES = ("#c4694a", "#e6dfd1")
+
 
 def srgb_to_linear(c: float) -> float:
     return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
@@ -181,6 +260,16 @@ def srgb_to_linear(c: float) -> float:
 def hex_to_linear(value: str) -> tuple[float, float, float]:
     v = value.lstrip("#")
     return tuple(srgb_to_linear(int(v[i : i + 2], 16) / 255.0) for i in (0, 2, 4))
+
+
+def stable_hash(value: int) -> int:
+    """FNV-1a. Python's `hash` is salted per process, so a roof would move
+    between bakes; this keeps a colour on the same level forever."""
+    h = 0x811C9DC5
+    for _ in range(8):
+        h = ((h ^ (value & 0xFF)) * 0x01000193) & 0xFFFFFFFF
+        value >>= 8
+    return h
 
 
 def main() -> int:
@@ -197,11 +286,12 @@ def main() -> int:
     rigid = [(np.array(hex_to_linear(h)), dy) for h, dy in RIGID.items()]
     along = [(np.array(hex_to_linear(h)), d) for h, d in NORMAL_OFFSETS.items()]
     raised = [(np.array(hex_to_linear(h)), d) for h, d in RAISED.items()]
+    varied = [np.array(hex_to_linear(h)) for h in VARIED_BASES]
 
     total = 0
     tiles = 0
     for path in paths:
-        moved = process(path, layers, rigid, along, raised)
+        moved = process(path, layers, rigid, along, raised, varied)
         if moved is None:
             continue
         total += moved
@@ -213,7 +303,7 @@ def main() -> int:
     return 0
 
 
-def process(path: str, layers, rigid, along, raised) -> int | None:
+def process(path: str, layers, rigid, along, raised, varied) -> int | None:
     with open(path, "rb") as fh:
         data = fh.read()
     if data[:4] != b"glTF":
@@ -244,6 +334,11 @@ def process(path: str, layers, rigid, along, raised) -> int | None:
             flat = np.abs(normals[tris[:, 0]][:, 1]) > NORMAL_UP
             low = np.abs(positions[tris][:, :, 1]).max(axis=1) < GROUND_BAND
             candidates = tris[flat & low]
+            # Both height gates are decided here, before anything moves. Read
+            # later they would see positions the earlier passes had already
+            # shifted, so a surface lifted across the 1.5 m line would be picked
+            # up a second time by the above-ground passes and moved twice.
+            high = positions[:, 1] > GROUND_BAND
 
             for base, dy in layers:
                 matched = np.all(np.abs(colors - base) < MATCH_EPS, axis=1)
@@ -253,6 +348,24 @@ def process(path: str, layers, rigid, along, raised) -> int | None:
                 verts = np.unique(sel)
                 positions[verts, 1] += dy
                 moved += len(verts)
+
+            # Ground-level materials no LAYERS entry covers, on their own level.
+            if len(candidates):
+                ground_spare = np.ones(len(colors), dtype=bool)
+                for base, _ in layers:
+                    ground_spare &= ~np.all(np.abs(colors - base) < MATCH_EPS, axis=1)
+                for base, _ in rigid:
+                    ground_spare &= ~np.all(np.abs(colors - base) < MATCH_EPS, axis=1)
+                sel = candidates[np.all(ground_spare[candidates], axis=1)]
+                if len(sel):
+                    where = np.unique(sel)
+                    q = np.round(colors[where] * 4095).astype(np.int64)
+                    codes = (q[:, 0] << 24) | (q[:, 1] << 12) | q[:, 2]
+                    for code in np.unique(codes):
+                        verts = where[codes == code]
+                        step = (stable_hash(int(code)) % GROUND_FALLBACK_STEPS) + 1
+                        positions[verts, 1] += GROUND_FALLBACK_BASE + step * GROUND_FALLBACK_STEP
+                        moved += len(verts)
 
             # Rigid objects ignore the ground gate entirely — a tree crown is
             # neither horizontal nor near y = 0, and it has to move as a whole
@@ -280,7 +393,6 @@ def process(path: str, layers, rigid, along, raised) -> int | None:
             # facing is what lets this reach a dome: its faces point in every
             # direction, so a horizontal-only test misses most of it and a
             # steep-only test misses the rest.
-            high = positions[:, 1] > GROUND_BAND
             for base, dist in raised:
                 matched = np.all(np.abs(colors - base) < MATCH_EPS, axis=1) & high
                 if not matched.any():
@@ -295,6 +407,50 @@ def process(path: str, layers, rigid, along, raised) -> int | None:
                     continue
                 positions[matched] += normals[matched] * dist
                 moved += int(matched.sum())
+
+            # Everything else horizontal and above the ground band.
+            #
+            # Horizontal only, deliberately: an unlisted *vertical* surface is a
+            # wall, and pushing walls out here would stack with the per-component
+            # nudge in vary-buildings and start opening gaps between terraced
+            # neighbours. The conflicts this is for are decks and roofs.
+            spare = (np.abs(normals[:, 1]) > NORMAL_UP) & high
+            for base, _ in raised:
+                spare &= ~np.all(np.abs(colors - base) < MATCH_EPS, axis=1)
+            for base, _ in rigid:
+                spare &= ~np.all(np.abs(colors - base) < MATCH_EPS, axis=1)
+            if spare.any():
+                where = np.nonzero(spare)[0]
+                # Quantise before hashing, so float noise between bakes cannot
+                # move a colour to a different level and shift a roof.
+                q = np.round(colors[where] * 4095).astype(np.int64)
+                codes = (q[:, 0] << 24) | (q[:, 1] << 12) | q[:, 2]
+                for code in np.unique(codes):
+                    verts = where[codes == code]
+                    dist = ((stable_hash(int(code)) % FALLBACK_STEPS) + 1) * FALLBACK_STEP
+                    positions[verts] += normals[verts] * dist
+                    moved += len(verts)
+
+            # Steep faces no table covers, at any height. NORMAL_OFFSETS already
+            # gives doors, fences and glass their own push, and RIGID objects
+            # have moved as a whole, so both are left alone here.
+            wall_spare = steep.copy()
+            for base, _ in along:
+                wall_spare &= ~np.all(np.abs(colors - base) < MATCH_EPS, axis=1)
+            for base, _ in rigid:
+                wall_spare &= ~np.all(np.abs(colors - base) < MATCH_EPS, axis=1)
+            for base in varied:
+                wall_spare &= ~np.all(np.abs(colors - base) < MATCH_EPS, axis=1)
+            if wall_spare.any():
+                where = np.nonzero(wall_spare)[0]
+                q = np.round(colors[where] * 4095).astype(np.int64)
+                codes = (q[:, 0] << 24) | (q[:, 1] << 12) | q[:, 2]
+                for code in np.unique(codes):
+                    verts = where[codes == code]
+                    step = (stable_hash(int(code)) % STEEP_FALLBACK_STEPS) + 1
+                    dist = STEEP_FALLBACK_BASE + step * STEEP_FALLBACK_STEP
+                    positions[verts] += normals[verts] * dist
+                    moved += len(verts)
 
             write_vec3(binary, p_off, positions)
             update_bounds(gltf, attrs["POSITION"], positions)

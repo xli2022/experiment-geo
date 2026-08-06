@@ -49,22 +49,33 @@ START=$(date +%s)
 # destroys the ground-layer offsets.
 #
 # Draco quantizes positions onto a *uniform* grid sized by the mesh's largest
-# extent, so a 750 m wide tile at the default 14 bits lands every axis —
-# including height — on a 45.8 mm grid (measured, not inferred). The layer
-# separations from tools/offset-ground.py are centimetres, so everything under
-# half a step snapped straight back to a shared height and the coplanar
-# z-fighting came back after compression even though the offsets were applied
-# correctly. 16 bits gives ~11.4 mm, which the separations clear comfortably.
-QUANTIZE_POSITION="${QUANTIZE_POSITION:-16}"
+# extent, so a 750 m wide tile lands every axis — including height — on one
+# grid: 45.8 mm at the default 14 bits, 11.4 mm at 16 (both measured, not
+# inferred). The separations tools/offset-ground.py and tools/vary-buildings.py
+# apply run from 4 mm to a few centimetres, so at 16 bits the finer half of them
+# snapped back to a shared height and the surfaces they were meant to separate
+# came out exactly coplanar again — measured across one tile, 6,670 of 11,466
+# coincident pairs existed only because of the grid.
+#
+# 20 bits gives 0.72 mm, which every separation clears by at least fivefold.
+# It costs 1.44x the bytes (0.36 -> 0.53 MB on a z15 Berlin tile), which against
+# a 1 GB budget the whole city currently uses 2.5% of is not a real constraint.
+QUANTIZE_POSITION="${QUANTIZE_POSITION:-20}"
 
 for glb in "${GLBS[@]}"; do
-  tmp="$glb.opt"
-  pre="$glb.pre"
+  # The temporary names have to keep the .glb extension. gltf-transform picks
+  # its container from the extension alone, so writing to "$glb.opt" produced
+  # glTF JSON with the buffer in a sidecar .bin — and since the result was then
+  # moved onto a .glb path, every tile shipped as a JSON file named .glb with a
+  # second file beside it. It loaded (three.js sniffs the magic and falls back),
+  # but it cost two requests per tile instead of one.
+  tmp="${glb%.glb}.opt.glb"
+  pre="${glb%.glb}.pre.glb"
   if npx --yes @gltf-transform/cli optimize "$glb" "$pre" \
        --compress false --texture-compress webp $SIMPLIFY_FLAG >/dev/null 2>&1 \
      && npx --yes @gltf-transform/cli draco "$pre" "$tmp" \
        --quantize-position "$QUANTIZE_POSITION" >/dev/null 2>&1; then
-    rm -f "$pre"
+    rm -f "$pre" "$glb.bin"
     mv "$tmp" "$glb"
     printf '.'
   else

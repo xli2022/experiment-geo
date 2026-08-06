@@ -3,6 +3,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { patchGtaoForLogDepth } from './gtaoLogDepth';
 
 export interface ViewerOptions {
   /** Distance to the near clipping plane, in metres. */
@@ -95,6 +96,8 @@ export class Viewer {
     // so occlusion should gather over a wall-to-pavement distance rather than
     // the centimetres that suit a single object.
     gtao.updateGtaoMaterial({ radius: 2.5, distanceExponent: 1.0, thickness: 1.0, scale: 1.0 });
+    // Must come after the material is configured and before it first compiles.
+    patchGtaoForLogDepth(gtao, this.renderer);
     composer.addPass(gtao);
 
     // The composer works in linear space, so the conversion the renderer would
