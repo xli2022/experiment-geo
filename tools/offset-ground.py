@@ -96,6 +96,39 @@ LAYERS = {
 # every tree in the city carries a coincident pair. There are thousands of them.
 RIGID = {
     "#6f9a57": 0.04,  # TREE_CROWN — lifted clear of the trunk it sits on
+    # Posts and masts sit on top of the thing they are mounted to, so their
+    # caps land in its surface. Steep-face displacement cannot reach those —
+    # a cap is horizontal — so the whole object lifts instead.
+    "#9aa0a6": 0.025,  # METAL_FENCE_POST / POWER_TOWER_*
+}
+
+# Surfaces pushed out along their own normal rather than upward, because they
+# are set flush into whatever they belong to and a vertical face cannot be
+# separated by a change in height.
+#
+# This is what is left once the ground and the trees are sorted out: measured
+# on a shipped tile, 490 genuine same-facing coplanar pairs, of which garage
+# doors against concrete (177), fences against gravel (118), and entrances and
+# wooden doors against walls (28) are the bulk. OSM2World models a door as a
+# panel exactly in the plane of the wall it opens through, so the two fight for
+# every pixel of the door.
+#
+# Pushing out along the normal also reads correctly: a door or a fence panel
+# standing a couple of centimetres proud of its wall is what the real thing
+# does. Values stay small enough that the corner gaps opened by moving faces
+# independently are far below a pixel at any altitude you fly at.
+NORMAL_OFFSETS = {
+    "#c2bcb2": 0.025,  # GARAGE_DOOR — set into a concrete wall
+    "#8d7a63": 0.025,  # ENTRANCE_DEFAULT — doors, same story
+    "#9b7c55": 0.020,  # WOOD
+    "#a08560": 0.020,  # WOOD_WALL
+    "#a8adb2": 0.030,  # CHAIN_LINK_FENCE / METAL_FENCE / HANDRAIL_DEFAULT
+    "#9aa0a6": 0.035,  # METAL_FENCE_POST / POWER_TOWER_* — posts on their panel
+    "#cfd6da": 0.015,  # BUILDING_WINDOWS / SINGLE_WINDOW
+    "#aac6d6": 0.015,  # GLASS
+    "#b3ccda": 0.015,  # GLASS_WALL
+    "#c9c4bb": 0.030,  # ADVERTISING_POSTER / BUS_STOP_SIGN — mounted on things
+    "#d8d5cf": 0.030,  # FLAGCLOTH / TENNIS_NET
 }
 
 # A triangle counts as ground if it is near-horizontal and near y = 0. Both
@@ -128,11 +161,12 @@ def main() -> int:
 
     layers = [(np.array(hex_to_linear(h)), dy) for h, dy in LAYERS.items()]
     rigid = [(np.array(hex_to_linear(h)), dy) for h, dy in RIGID.items()]
+    along = [(np.array(hex_to_linear(h)), d) for h, d in NORMAL_OFFSETS.items()]
 
     total = 0
     tiles = 0
     for path in paths:
-        moved = process(path, layers, rigid)
+        moved = process(path, layers, rigid, along)
         if moved is None:
             continue
         total += moved
@@ -144,7 +178,7 @@ def main() -> int:
     return 0
 
 
-def process(path: str, layers, rigid) -> int | None:
+def process(path: str, layers, rigid, along) -> int | None:
     with open(path, "rb") as fh:
         data = fh.read()
     if data[:4] != b"glTF":
@@ -193,6 +227,25 @@ def process(path: str, layers, rigid) -> int | None:
                 if not matched.any():
                     continue
                 positions[matched, 1] += dy
+                moved += int(matched.sum())
+
+            # Push out along the surface's own normal. A door set into a wall
+            # is vertical, so no amount of raising or lowering separates it
+            # from the wall — it has to come forward instead.
+            #
+            # Restricted to steep faces on purpose. Applied to a horizontal
+            # surface this becomes a vertical move that lands wherever the
+            # arithmetic puts it, and the first version did exactly that: a
+            # fence surface sitting at +0.064 plus a 0.030 push arrived at
+            # +0.094, which is precisely PAVING_STONE's level, turning 118
+            # conflicts into 293. Horizontal surfaces belong to LAYERS, which
+            # assigns levels deliberately rather than by accident.
+            steep = np.abs(normals[:, 1]) < 0.7
+            for base, dist in along:
+                matched = np.all(np.abs(colors - base) < MATCH_EPS, axis=1) & steep
+                if not matched.any():
+                    continue
+                positions[matched] += normals[matched] * dist
                 moved += int(matched.sum())
 
             write_vec3(binary, p_off, positions)

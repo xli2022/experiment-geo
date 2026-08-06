@@ -84,6 +84,24 @@ WALL_VARIANTS = (
     "#d0ccc4",  # pale slate
 )
 
+# Metres each component is pushed out along its own normals, chosen from the
+# same hash that picks its colour.
+#
+# Colouring buildings individually exposed z-fighting that uniform colour had
+# been hiding: where two building surfaces are coincident — an OSM `building`
+# outline against one of its `building:part` children, or two neighbours whose
+# footprints share an edge — they used to be the same colour, so whichever won
+# a pixel looked identical. Give them different colours and the tie becomes a
+# visible flicker across whole roofs and facades.
+#
+# Nudging by component rather than by material is what separates them, since
+# they are the same material by definition. Eight steps of 6 mm is far below
+# what reads as a step and far above the 0.11 mm quantization grid. The step
+# count matters: two coincident components collide whenever their hashes pick
+# the same step, so four steps left a quarter of them still tied.
+NUDGE_STEP = 0.006
+NUDGE_STEPS = 8
+
 # (label, base colour, variants). Order matters only for reporting.
 TARGETS = (
     ("roof", ROOF_BASE, ROOF_VARIANTS),
@@ -174,7 +192,12 @@ def process(path: str, targets: list, weld: float) -> dict[str, int] | None:
             if "COLOR_0" not in attrs or "POSITION" not in attrs:
                 continue
             colors, c_off, c_count = read_vec3(gltf, binary, attrs["COLOR_0"])
-            positions, _, _ = read_vec3(gltf, binary, attrs["POSITION"])
+            positions, p_off, _ = read_vec3(gltf, binary, attrs["POSITION"])
+            normals, _, _ = (
+                read_vec3(gltf, binary, attrs["NORMAL"])
+                if "NORMAL" in attrs
+                else (None, None, 0)
+            )
             if colors is None or positions is None or len(colors) != len(positions):
                 continue
 
@@ -202,18 +225,36 @@ def process(path: str, targets: list, weld: float) -> dict[str, int] | None:
                     # Offset the hash per target so a building's wall and roof
                     # do not land on the same index in their palettes, which
                     # would correlate them into visible stripes across the city.
-                    idx = (stable_hash(key) + len(name)) % len(variants)
+                    h = stable_hash(key)
+                    idx = (h + len(name)) % len(variants)
                     colors[verts] = variants[idx]
+                    if normals is not None:
+                        # Same hash, so a component's nudge is as stable across
+                        # re-bakes as its colour.
+                        positions[verts] += normals[verts] * (
+                            (h % NUDGE_STEPS) * NUDGE_STEP
+                        )
                     counts[name] += 1
                     changed = True
 
             write_vec3(binary, c_off, colors)
+            if normals is not None:
+                write_vec3(binary, p_off, positions)
+                update_bounds(gltf, attrs["POSITION"], positions)
 
     if not changed:
         return counts
 
-    rebuild(path, data, json_len, binary)
+    rebuild(path, gltf, binary)
     return counts
+
+
+def update_bounds(gltf: dict, index: int, positions: np.ndarray) -> None:
+    """Accessor min/max are required by the spec and feed the tileset's bounding
+    volumes, so they have to follow the nudged geometry."""
+    acc = gltf["accessors"][index]
+    acc["min"] = [float(v) for v in positions.min(axis=0)]
+    acc["max"] = [float(v) for v in positions.max(axis=0)]
 
 
 def stable_hash(key: tuple[int, int, int]) -> int:
@@ -298,12 +339,26 @@ def read_indices(gltf: dict, binary: bytearray, prim: dict, count: int):
     return arr.astype(np.int64).reshape(-1, 3)
 
 
-def rebuild(path: str, original: bytes, json_len: int, binary: bytearray) -> None:
-    """Write the GLB back with its JSON chunk untouched and the new BIN chunk."""
-    head = original[: 20 + json_len]
-    bin_header = original[20 + json_len : 20 + json_len + 8]
-    out = bytearray(head + bin_header + bytes(binary))
-    struct.pack_into("<I", out, 8, len(out))
+def rebuild(path: str, gltf: dict, binary: bytearray) -> None:
+    """
+    Reassemble the GLB from scratch.
+
+    The JSON chunk cannot be reused verbatim any more: nudging components moves
+    geometry, so accessor min/max change and the chunk's length changes with
+    them. Both chunks are padded to a 4-byte boundary as the spec requires,
+    JSON with spaces and BIN with zeros.
+    """
+    json_bytes = json.dumps(gltf, separators=(",", ":")).encode("utf-8")
+    json_bytes += b" " * (-len(json_bytes) % 4)
+    bin_bytes = bytes(binary)
+    bin_bytes += b"\x00" * (-len(bin_bytes) % 4)
+
+    total = 12 + 8 + len(json_bytes) + 8 + len(bin_bytes)
+    out = bytearray()
+    out += b"glTF" + struct.pack("<II", 2, total)
+    out += struct.pack("<II", len(json_bytes), 0x4E4F534A) + json_bytes
+    out += struct.pack("<II", len(bin_bytes), 0x004E4942) + bin_bytes
+
     with open(path, "wb") as fh:
         fh.write(out)
 
