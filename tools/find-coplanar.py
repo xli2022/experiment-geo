@@ -108,10 +108,24 @@ def node_transforms(j: dict) -> dict[int, np.ndarray]:
 
 
 def to_rgb8(colors: np.ndarray) -> np.ndarray:
+    """COLOR_0 as sRGB bytes — the space the offset tables are keyed in.
+
+    glTF defines COLOR_0 as linear, and printing those bytes raw makes the hex
+    codes in this report look like colours while matching nothing: the tables in
+    offset-ground.py are sRGB, so a conflict reported as #2a2e38 is actually
+    #707580 there and looking it up finds nothing. That cost a whole round of
+    analysis — the offsets for a fighting pair were computed from the wrong two
+    hashes, which put them 48 mm apart on paper while the geometry had them at
+    8 mm. Converting here means a reported colour can be pasted straight into a
+    table lookup.
+    """
     if colors.dtype.kind == 'f':
-        return np.clip(colors[:, :3] * 255, 0, 255).astype(np.uint8)
-    scale = 65535.0 if colors.dtype.itemsize == 2 else 255.0
-    return np.clip(colors[:, :3].astype(np.float64) / scale * 255, 0, 255).astype(np.uint8)
+        linear = np.clip(colors[:, :3].astype(np.float64), 0.0, 1.0)
+    else:
+        scale = 65535.0 if colors.dtype.itemsize == 2 else 255.0
+        linear = np.clip(colors[:, :3].astype(np.float64) / scale, 0.0, 1.0)
+    srgb = np.where(linear <= 0.0031308, linear * 12.92, 1.055 * linear ** (1 / 2.4) - 0.055)
+    return np.clip(srgb * 255, 0, 255).round().astype(np.uint8)
 
 
 def triangles(j: dict, bufs: list[bytes]) -> list[tuple[np.ndarray, np.ndarray]]:
