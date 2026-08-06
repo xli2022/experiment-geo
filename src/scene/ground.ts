@@ -1,43 +1,73 @@
 import * as THREE from 'three';
 
+/** Height field as written by tools/fetch-dem.py. */
+export interface HeightField {
+  attribution: string;
+  north: number;
+  south: number;
+  west: number;
+  east: number;
+  resolution: number;
+  /** Metres above sea level, row-major from the north-west corner. */
+  heights: number[];
+}
+
 /**
- * A flat sheet under cities whose tileset has no terrain of its own.
+ * The ground under cities whose tileset carries no terrain of its own.
  *
- * The Berlin bake draws its own ground, because OSM2World renders landuse,
- * water and roads alongside the buildings. PLATEAU's `bldg` datasets are
- * buildings and nothing else, so without this Tokyo is a few hundred towers
- * hanging in mid-air with sky underneath them — the shadows land nowhere and
- * there is no horizon to read height against.
+ * Berlin's bake draws its own, because OSM2World renders landuse, water and
+ * roads alongside the buildings. PLATEAU publishes buildings, roads and
+ * vegetation with no relief at all — its catalogue has no `dem` for Shinjuku —
+ * so without this Tokyo is towers hanging in mid-air.
  *
- * Deliberately a plain sheet rather than fetched terrain. PLATEAU does publish
- * elevation separately, but Shinjuku is flat to within a few metres over the
- * area fetched, so a sheet costs one draw call and is honest about being a
- * backdrop rather than pretending to survey data it does not have.
+ * A flat sheet cannot substitute, and the numbers say why: GSI's survey puts
+ * Shinjuku's ground between 4.5 m and 43.9 m. PLATEAU places every building at
+ * its true elevation, so against a single plane at the median, 43% of building
+ * meshes floated more than 10 m — and a 25 m float displaces its shadow by 32 m
+ * at this sun angle, which is what makes shadows read as detached from the
+ * buildings casting them.
+ *
+ * Deriving the surface from the buildings instead was tried twice and does not
+ * work. "The lowest geometry in a patch of city is the ground there" holds at
+ * tile scale and fails at cell scale: most cells never contain a base, so their
+ * lowest vertex is a roof, and every rejection threshold ends up classifying
+ * the real ground as the outlier. So this uses survey data.
  */
 export interface GroundOptions {
-  /** Sheet colour. Should sit against the city, not compete with it. */
+  /** Sheet colour where no height field is supplied. */
   color?: string;
   /**
    * Half-width in metres. Wants to reach past the fog, or its edge shows as a
    * hard line against the sky.
    */
   extent?: number;
+  /** Where the world origin sits, so the field can be placed against it. */
+  anchor?: { lat: number; lon: number };
   /**
-   * Metres below the origin. The anchor puts y = 0 at the ellipsoid, and
-   * PLATEAU's buildings start at their real base height, so a sheet exactly at
-   * zero cuts through them.
+   * Metres to add to every surveyed elevation.
+   *
+   * GSI reports height above sea level; the world's Y is measured from the
+   * anchor. The two differ by a constant — the anchor's own ground level plus
+   * whatever datum offset the tileset's placement carries — and one number
+   * absorbs both. Measured against where PLATEAU actually puts its buildings
+   * rather than derived, because the tileset's own bounding volumes disagree
+   * with its geometry by over a hundred metres.
    */
-  depth?: number;
+  elevationOffset?: number;
 }
 
 export class Ground {
-  private readonly mesh: THREE.Mesh;
-  private readonly geometry: THREE.PlaneGeometry;
+  private mesh: THREE.Mesh;
+  private geometry: THREE.BufferGeometry;
   private readonly material: THREE.MeshStandardMaterial;
   private scene: THREE.Scene | null = null;
+  private readonly anchor: { lat: number; lon: number } | null;
+  private readonly offset: number;
 
   constructor(options: GroundOptions = {}) {
-    const { color = '#8d9285', extent = 20_000, depth = 0 } = options;
+    const { color = '#8d9285', extent = 13_000, anchor, elevationOffset = 0 } = options;
+    this.anchor = anchor ?? null;
+    this.offset = elevationOffset;
 
     this.geometry = new THREE.PlaneGeometry(extent * 2, extent * 2);
     this.material = new THREE.MeshStandardMaterial({
@@ -47,25 +77,83 @@ export class Ground {
     });
     this.mesh = new THREE.Mesh(this.geometry, this.material);
     this.mesh.rotation.x = -Math.PI / 2;
-    this.mesh.position.y = -depth;
     // Receives so the towers cast onto it — that shadow is most of what sells
     // the contact. Casting would be pointless and would fight the shadow
     // camera's fit, since the sheet spans the whole scene.
     this.mesh.receiveShadow = true;
     this.mesh.castShadow = false;
-    // Large flat surfaces are the cheapest thing to get wrong in a depth
-    // buffer, and this one underlies everything; drawing it first with the
-    // renderer's default sort keeps it out of the way.
     this.mesh.renderOrder = -1;
   }
+
+  /**
+   * Replace the flat sheet with a surveyed surface.
+   *
+   * The field covers a few kilometres and the sheet covers tens, so the mesh is
+   * built in two parts: a dense grid over the surveyed area, and the flat
+   * remainder around it held at the field's edge height so there is no step
+   * where one becomes the other.
+   */
+  setHeightField(field: HeightField): void {
+    if (!this.anchor) return;
+
+    const res = field.resolution;
+    // Local ENU metres per degree at this latitude. Over a few kilometres the
+    // flat-earth approximation is accurate to centimetres, which is far below
+    // what a terrain mesh needs.
+    const mPerLat = 111_132.0;
+    const mPerLon = 111_320.0 * Math.cos((this.anchor.lat * Math.PI) / 180);
+
+    const x0 = (field.west - this.anchor.lon) * mPerLon;
+    const x1 = (field.east - this.anchor.lon) * mPerLon;
+    // World +z runs south, so the north edge is the most negative z.
+    const z0 = -(field.north - this.anchor.lat) * mPerLat;
+    const z1 = -(field.south - this.anchor.lat) * mPerLat;
+
+    const geometry = new THREE.PlaneGeometry(x1 - x0, z1 - z0, res - 1, res - 1);
+    const pos = geometry.getAttribute('position') as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      const col = i % res;
+      const row = Math.floor(i / res);
+      // PlaneGeometry's rows run +Y first, which after the -90° X rotation is
+      // north first — the same order the field is stored in.
+      pos.setZ(i, field.heights[row * res + col]! + this.offset);
+    }
+    pos.needsUpdate = true;
+    geometry.computeVertexNormals();
+    geometry.computeBoundingSphere();
+
+    const surveyed = new THREE.Mesh(geometry, this.material);
+    surveyed.rotation.x = -Math.PI / 2;
+    surveyed.position.set((x0 + x1) / 2, 0, (z0 + z1) / 2);
+    surveyed.receiveShadow = true;
+    surveyed.castShadow = false;
+    surveyed.renderOrder = -1;
+
+    // The surround sits at the field's median so the join is not a cliff. It
+    // exists to fill the horizon out to the fog, not to claim any accuracy.
+    const sorted = [...field.heights].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)]! + this.offset;
+    this.mesh.position.y = median;
+
+    if (this.scene) this.scene.add(surveyed);
+    this.surveyed = surveyed;
+  }
+
+  private surveyed: THREE.Mesh | null = null;
 
   attach(scene: THREE.Scene): void {
     this.scene = scene;
     scene.add(this.mesh);
+    if (this.surveyed) scene.add(this.surveyed);
   }
 
   dispose(): void {
     this.scene?.remove(this.mesh);
+    if (this.surveyed) {
+      this.scene?.remove(this.surveyed);
+      this.surveyed.geometry.dispose();
+      this.surveyed = null;
+    }
     this.geometry.dispose();
     this.material.dispose();
     this.scene = null;

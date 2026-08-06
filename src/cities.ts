@@ -69,7 +69,13 @@ export interface City {
    * Only for tilesets that contain no terrain of their own. Berlin's bake draws
    * its own ground, and a sheet there would either z-fight it or hide it.
    */
-  readonly ground?: { color?: string; depth?: number; extent?: number };
+  readonly ground?: {
+    color?: string;
+    extent?: number;
+    /** Height field under `<city>/`, from tools/fetch-dem.py. */
+    terrain?: string;
+    elevationOffset?: number;
+  };
   /**
    * PBR overrides applied to every material as tiles load.
    *
@@ -93,7 +99,12 @@ const OSM_CREDIT =
 // for this build" is not politeness, it is the second half of the licence.
 const PLATEAU_CREDIT =
   '3D City Model © <a href="https://www.mlit.go.jp/plateau/" target="_blank" rel="noopener">' +
-  'Project PLATEAU</a>, MLIT Japan · PDL 1.0, processed for this build';
+  'Project PLATEAU</a>, MLIT Japan · PDL 1.0, processed for this build' +
+  // GSI's terms follow the Government of Japan Standard Terms and require the
+  // source named. The terrain is a second dataset under the city, so it needs
+  // its own credit rather than being folded into PLATEAU's.
+  ' · terrain © <a href="https://maps.gsi.go.jp/development/ichiran.html" ' +
+  'target="_blank" rel="noopener">国土地理院</a> (GSI Japan)';
 
 // Neither city is a whole city, and the ids say so. This is a 5.2 x 5.2 km box
 // centred on Mitte — it takes in edges of Tiergarten, Kreuzberg, Friedrichshain
@@ -134,11 +145,11 @@ const TOKYO_SHINJUKU: City = {
   anchor: { lat: 35.6898, lon: 139.696, height: -94 },
   attribution: PLATEAU_CREDIT,
   material: { metalness: 0, roughness: 1 },
-  // PLATEAU has no terrain relief for Shinjuku — there is no `dem` package in
-  // the catalogue at all — and `tran` covers only the carriageways, so the
-  // blocks between them would still be sky. The sheet fills those in under
-  // everything else.
-  ground: { color: '#8a8f83', depth: 0, extent: 13_000 },
+  // PLATEAU has no relief for Shinjuku — no `dem` package in its catalogue at
+  // all — so the ground comes from GSI's survey instead. It puts this area
+  // between 4.5 and 43.9 m, which is why a flat sheet could never sit right
+  // under it whatever height the sheet took.
+  ground: { color: '#8a8f83', extent: 13_000, terrain: 'terrain.json', elevationOffset: -55 },
 };
 
 // Typed as non-empty so DEFAULT_CITY does not need a runtime check for a case
@@ -160,6 +171,11 @@ export function cityFromLocation(search = window.location.search): City {
  * navigating, and stacking entries would make Back walk through every city the
  * user tried instead of leaving the page.
  */
+/** Absolute URL for a file under a city's directory. */
+export function cityAsset(city: City, name: string): string {
+  return `${TILES_BASE}${city.id}/${name}`;
+}
+
 /** Absolute tileset URL for one of a city's layers. */
 export function layerUrl(city: City, layer: Layer): string {
   return `${TILES_BASE}${city.id}/${layer.dir}/tileset.json`;

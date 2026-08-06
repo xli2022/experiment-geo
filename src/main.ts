@@ -6,7 +6,7 @@ import { setupLighting } from './scene/lighting';
 import { Ground } from './scene/ground';
 import { Hud, formatDistance } from './ui/Hud';
 import { CityPicker } from './ui/CityPicker';
-import { CITIES, cityFromLocation, layerUrl, rememberCity, type City } from './cities';
+import { CITIES, cityAsset, cityFromLocation, layerUrl, rememberCity, type City } from './cities';
 import { ERROR_TARGET, START_ALTITUDE } from './config';
 
 const viewer = new Viewer(document.body);
@@ -41,8 +41,20 @@ function loadCity(next: City): void {
   ground?.dispose();
   ground = null;
   if (next.ground) {
-    ground = new Ground(next.ground);
-    ground.attach(viewer.scene);
+    const created = new Ground({ ...next.ground, anchor: next.anchor });
+    ground = created;
+    created.attach(viewer.scene);
+    if (next.ground.terrain) {
+      // Fetched rather than bundled: it is a few hundred KB of survey data per
+      // city, and only the city being flown needs it.
+      fetch(cityAsset(next, next.ground.terrain))
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`terrain ${r.status}`))))
+        .then((field) => {
+          // The city may have been switched while this was in flight.
+          if (ground === created) created.setHeightField(field);
+        })
+        .catch((error) => console.warn('terrain unavailable, using a flat sheet:', error));
+    }
   }
 
   // Every layer is anchored to the same point, so they land in one frame
