@@ -45,7 +45,8 @@ await page.addInitScript(() => {
   };
 });
 
-await page.goto('http://localhost:4173/experiment-geo/', {
+const CITY = process.env.I_CITY ? `?city=${process.env.I_CITY}` : '';
+await page.goto(`http://localhost:4173/experiment-geo/${CITY}`, {
   waitUntil: 'domcontentloaded',
   timeout: 120000,
 });
