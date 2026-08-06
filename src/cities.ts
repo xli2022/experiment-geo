@@ -53,7 +53,7 @@ export interface City {
    * the same part of the city across re-bakes, rather than drifting with the
    * bounding sphere whenever the baked area changes.
    */
-  readonly anchor: { lat: number; lon: number };
+  readonly anchor: { lat: number; lon: number; height?: number };
   /**
    * Credit line, as HTML, shown while this city is loaded.
    *
@@ -69,7 +69,17 @@ export interface City {
    * Only for tilesets that contain no terrain of their own. Berlin's bake draws
    * its own ground, and a sheet there would either z-fight it or hide it.
    */
-  readonly ground?: { color?: string; depth?: number };
+  readonly ground?: { color?: string; depth?: number; extent?: number };
+  /**
+   * PBR overrides applied to every material as tiles load.
+   *
+   * For photo-textured sources. PLATEAU's materials come in at metalness 0.5
+   * and roughness 0.3 — glossy half-metal — which darkens a texture that
+   * already carries its own baked lighting. Buildings are neither metallic nor
+   * polished, and the photograph has done the shading, so the material should
+   * be as close to plain diffuse as the renderer allows.
+   */
+  readonly material?: { metalness?: number; roughness?: number };
 }
 
 const OSM_CREDIT =
@@ -106,17 +116,24 @@ const TOKYO_SHINJUKU: City = {
     { dir: 'bldg' },
     // Backdrop layers, held coarser than the buildings on purpose.
     { dir: 'tran', errorTarget: 24 },
-    { dir: 'wtr', errorTarget: 24 },
+    // `wtr` is omitted: its two meshes land ±5 km vertically and 9 km out,
+    // which no amount of water in Shinjuku explains. 92 KB of a ward that is
+    // essentially waterless is not worth shipping broken.
     { dir: 'veg-cover', errorTarget: 32 },
     { dir: 'veg-trees', errorTarget: 32 },
   ],
-  anchor: { lat: 35.6898, lon: 139.696 },
+  // Height matters here in a way it does not for Berlin. PLATEAU places
+  // buildings at their true elevation — the lowest base in this area is 53 m
+  // above the ellipsoid — while the anchor defaults to 0, so the city hung
+  // 53 m in the air above its own ground sheet.
+  anchor: { lat: 35.6898, lon: 139.696, height: 53 },
   attribution: PLATEAU_CREDIT,
+  material: { metalness: 0, roughness: 1 },
   // PLATEAU has no terrain relief for Shinjuku — there is no `dem` package in
   // the catalogue at all — and `tran` covers only the carriageways, so the
   // blocks between them would still be sky. The sheet fills those in under
   // everything else.
-  ground: { color: '#8a8f83', depth: 4 },
+  ground: { color: '#8a8f83', depth: 0, extent: 13_000 },
 };
 
 // Typed as non-empty so DEFAULT_CITY does not need a runtime check for a case

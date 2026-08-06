@@ -51,6 +51,7 @@ function loadCity(next: City): void {
     new TilesetSource(layerUrl(next, layer), viewer.renderer, {
       errorTarget: layer.errorTarget ?? ERROR_TARGET,
       anchor: next.anchor,
+      material: next.material,
       // Only the first layer drives framing and the overlay. The rest stream in
       // behind it; waiting for all of them would hold a blank screen until the
       // slowest backdrop finished.

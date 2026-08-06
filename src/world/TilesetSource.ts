@@ -22,6 +22,8 @@ export interface TilesetSourceOptions {
    * empty space. Set it when using a partial subtree of a large tileset.
    */
   anchor?: { lat: number; lon: number; height?: number };
+  /** PBR overrides applied to every material as tiles stream in. */
+  material?: { metalness?: number; roughness?: number };
   /** Called once the root tileset is parsed and the world has been placed. */
   onReady?: (info: TilesetInfo) => void;
   onError?: (error: Error) => void;
@@ -209,6 +211,16 @@ export class TilesetSource implements WorldSource {
       // would save a little fill rate and lose most of the effect.
       mesh.castShadow = true;
       mesh.receiveShadow = true;
+
+      const pbr = this.opts.material;
+      if (pbr) {
+        for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+          const std = m as THREE.MeshStandardMaterial;
+          if (!std) continue;
+          if (pbr.metalness !== undefined) std.metalness = pbr.metalness;
+          if (pbr.roughness !== undefined) std.roughness = pbr.roughness;
+        }
+      }
     });
   };
 }
