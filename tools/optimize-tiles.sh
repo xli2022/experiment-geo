@@ -62,6 +62,25 @@ START=$(date +%s)
 # a 1 GB budget the whole city currently uses 2.5% of is not a real constraint.
 QUANTIZE_POSITION="${QUANTIZE_POSITION:-20}"
 
+# webp or ktx2, and the choice is about memory rather than download size.
+#
+# WebP is a transport format: it decodes to RGBA8 and uploads uncompressed, so
+# a 1024-square texture costs 4 MB of VRAM no matter how small the file was.
+# Measured on the Tokyo bake, 0.4 MB of WebP became 9 MB once decoded — a 22x
+# amplification, paid for every tile resident at once. KTX2/Basis transcodes to
+# whatever the GPU wants and stays compressed there, roughly 4-8x smaller, with
+# mipmaps in the container rather than generated at load.
+#
+# So ktx2 wherever textures carry real image detail, and webp where they do not.
+# Berlin's only texture is a 192-byte tiling window pattern; KTX2's container
+# overhead alone would exceed it, and there is no VRAM problem to solve.
+#
+# Reading KTX2 needs a transcoder at runtime — see src/world/TilesetSource.ts.
+# Encoding it needs the `ktx` CLI from KhronosGroup/KTX-Software on PATH, which
+# gltf-transform shells out to; without it the run fails with an unhelpful
+# "command -v ktx" error.
+TEXTURE_FORMAT="${TEXTURE_FORMAT:-webp}"
+
 for glb in "${GLBS[@]}"; do
   # The temporary names have to keep the .glb extension. gltf-transform picks
   # its container from the extension alone, so writing to "$glb.opt" produced
@@ -72,7 +91,7 @@ for glb in "${GLBS[@]}"; do
   tmp="${glb%.glb}.opt.glb"
   pre="${glb%.glb}.pre.glb"
   if npx --yes @gltf-transform/cli optimize "$glb" "$pre" \
-       --compress false --texture-compress webp $SIMPLIFY_FLAG >/dev/null 2>&1 \
+       --compress false --texture-compress "$TEXTURE_FORMAT" $SIMPLIFY_FLAG >/dev/null 2>&1 \
      && npx --yes @gltf-transform/cli draco "$pre" "$tmp" \
        --quantize-position "$QUANTIZE_POSITION" >/dev/null 2>&1; then
     rm -f "$pre" "$glb.bin"

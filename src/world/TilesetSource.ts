@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { TilesRenderer } from '3d-tiles-renderer';
 import { GLTFExtensionsPlugin } from '3d-tiles-renderer/plugins';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import type { WorldSource } from './WorldSource';
 
 export interface TilesetSourceOptions {
@@ -51,6 +52,7 @@ export class TilesetSource implements WorldSource {
   readonly tiles: TilesRenderer;
 
   private readonly dracoLoader: DRACOLoader;
+  private readonly ktx2Loader: KTX2Loader;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly opts: TilesetSourceOptions;
   private scene: THREE.Scene | null = null;
@@ -74,6 +76,22 @@ export class TilesetSource implements WorldSource {
     this.dracoLoader = new DRACOLoader();
     this.dracoLoader.setDecoderPath(`${import.meta.env.BASE_URL}draco/`);
 
+    // Tokyo's textures are KTX2/Basis rather than WebP, which is a choice about
+    // memory rather than download size. WebP is a transport format: it decodes
+    // to RGBA8 and uploads uncompressed, so a 1024-square texture costs 4 MB of
+    // VRAM however small the file was — measured on this bake, 0.4 MB of WebP
+    // became 9 MB once decoded. KTX2 transcodes to whatever the GPU wants
+    // (BC7, ASTC, ETC2) and *stays* compressed there, which is the constraint
+    // that actually binds when hundreds of tiles are resident at once.
+    //
+    // It needs a transcoder to read at all, and detectSupport has to see the
+    // real renderer — without it the loader cannot choose a target format and
+    // every KTX2 texture fails. Vendored next to the Draco decoder so the app
+    // keeps no third-party runtime dependency.
+    this.ktx2Loader = new KTX2Loader();
+    this.ktx2Loader.setTranscoderPath(`${import.meta.env.BASE_URL}basis/`);
+    this.ktx2Loader.detectSupport(renderer);
+
     // Registering a GLTFLoader on the manager only reaches tiles whose content
     // *is* a .glb, which is what the Berlin bake produces. Tilesets from
     // elsewhere ship .b3dm, and its glTF payload is parsed by a loader the
@@ -86,7 +104,11 @@ export class TilesetSource implements WorldSource {
     // the same route. autoDispose is off because dispose() below already owns
     // the DRACO loader, and disposing it twice throws.
     this.tiles.registerPlugin(
-      new GLTFExtensionsPlugin({ dracoLoader: this.dracoLoader, autoDispose: false }),
+      new GLTFExtensionsPlugin({
+        dracoLoader: this.dracoLoader,
+        ktxLoader: this.ktx2Loader,
+        autoDispose: false,
+      }),
     );
 
     this.tiles.addEventListener('load-root-tileset', this.place);
@@ -118,6 +140,7 @@ export class TilesetSource implements WorldSource {
     this.scene?.remove(this.tiles.group);
     this.tiles.dispose();
     this.dracoLoader.dispose();
+    this.ktx2Loader.dispose();
     this.scene = null;
   }
 

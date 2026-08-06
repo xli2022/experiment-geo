@@ -16,7 +16,14 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: false
+  # GitHub's own recommendation here is false, so that a half-finished
+  # deployment is never killed. That is the right default when runs complete;
+  # it is the wrong one during an incident. On 2026-08-06 Actions and Pages
+  # were degraded for hours and every push queued behind runs that could not
+  # finish, so the backlog only grew and none of it was work anyone wanted —
+  # each queued run builds the same commit's successor. Superseding is the
+  # behaviour that matches what a deploy of `master` means.
+  cancel-in-progress: true
 
 jobs:
   build:
