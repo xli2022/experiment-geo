@@ -41,13 +41,38 @@ jobs:
 
       # The baked tileset is committed (see .gitignore for why), so the build
       # output is self-contained and no bake runs here.
+      # Structural rather than a hard-coded path. The previous version checked
+      # for dist/tiles/berlin/tileset.json, which a rename to berlin-mitte/all
+      # quietly invalidated — so every deploy after it failed here, correctly
+      # refusing to publish a world it could not find, while looking from the
+      # outside like the Actions incident that was running at the time.
       - name: Check the world is actually present
         run: |
-          if [ ! -f dist/tiles/berlin/tileset.json ]; then
-            echo "::error::dist/tiles/berlin/tileset.json is missing — the deploy would publish an empty world"
+          if [ ! -d dist/tiles ]; then
+            echo "::error::dist/tiles is missing — the deploy would publish no world at all"
             exit 1
           fi
-          echo "tileset: $(find dist/tiles \( -name '*.glb' -o -name '*.b3dm' \) | wc -l) tiles"
+          fail=0
+          for city in dist/tiles/*/; do
+            [ -d "$city" ] || continue
+            layers=$(find "$city" -name tileset.json | wc -l)
+            if [ "$layers" -eq 0 ]; then
+              echo "::error::$city has no tileset.json — expected tiles/<city>/<layer>/tileset.json"
+              fail=1
+            else
+              echo "$(basename "$city"): $layers layer tileset(s)"
+            fi
+          done
+          cities=$(find dist/tiles -mindepth 1 -maxdepth 1 -type d | wc -l)
+          tiles=$(find dist/tiles \( -name '*.glb' -o -name '*.b3dm' \) | wc -l)
+          echo "$cities cities, $tiles tiles"
+          # A world that builds but carries almost nothing is the failure this
+          # guard exists for, and it does not announce itself any other way.
+          if [ "$cities" -eq 0 ] || [ "$tiles" -lt 50 ]; then
+            echo "::error::only $cities cities and $tiles tiles — refusing to publish an empty world"
+            fail=1
+          fi
+          exit $fail
 
       - name: Check published size against the 1 GB Pages limit
         run: |
