@@ -5,11 +5,14 @@ A world-exploration game built on open map data.
 **Version 1 goal:** a flying camera you can move freely around in 3D space, over a real
 city rendered as readable low-poly geometry.
 
+Two areas ship today — **Berlin Mitte** and **Tokyo Shinjuku** — switchable from the
+picker in the HUD, or with `?city=berlin-mitte` / `?city=tokyo-shinjuku`.
+
 | | |
 |---|---|
 | Platform | Web — TypeScript + Vite + three.js |
-| Geometry | OpenStreetMap, baked with [OSM2World](https://osm2world.org/) (OGC 3D Tiles) |
-| Look | Low-poly — textures removed, one flat palette colour per surface type |
+| Geometry | OpenStreetMap via [OSM2World](https://osm2world.org/), and [PLATEAU](https://www.mlit.go.jp/plateau/) for Tokyo (OGC 3D Tiles) |
+| Look | Low-poly for OSM worlds — textures removed, one flat palette colour per surface type. PLATEAU keeps its own photo textures. |
 | Streaming | [`3d-tiles-renderer`](https://github.com/NASA-AMMOS/3DTilesRendererJS) |
 | Game layer | None yet — a world viewer first |
 
@@ -307,8 +310,8 @@ the flag 16/16 tiles failed, with it 16/16 succeeded.
 
 ### Why the compression steps are not optional
 
-Measured on this bake — untextured geometry, so the texture library never enters the
-output at all:
+Measured on the Berlin bake, whose geometry is untextured apart from one tiling window
+pattern:
 
 | Stage | Per tile | Note |
 |---|---|---|
@@ -328,8 +331,60 @@ Pages deploy a working world straight from a push — no Java, no 478 MB downloa
 in CI. `tools/bake.sh` plus a pinned extract date remains the source of truth; re-bake when
 the world needs to change rather than casually, since each one adds a copy to git history.
 
-To point the app at a different world, set `TILESET_URL` in `src/config.ts`, or
-`VITE_TILESET_URL` at build time.
+Worlds are listed in `src/cities.ts`, one entry per area with its layers, anchor and
+credit line. `VITE_TILES_BASE` repoints all of them at another host — Cloudflare R2 or any
+CORS-enabled bucket — if the tilesets outgrow the 1 GB Pages limit.
+
+### WebP or KTX2
+
+Both are used, and the choice is about memory rather than download size.
+
+**WebP is a transport format.** It compresses the download, then decodes to RGBA8 and
+uploads uncompressed — a 1024-square texture costs 4 MB of VRAM however small the file
+was. Measured on the Tokyo bake, 0.4 MB of WebP became **9 MB** once decoded, and that is
+paid for every tile resident at once.
+
+**KTX2 (Basis Universal) is a GPU format.** It transcodes to whatever the hardware wants —
+BC7, ASTC, ETC2 — and *stays* compressed in VRAM, roughly 4-8× smaller, with mipmaps in
+the container rather than generated at load. `KHR_texture_basisu` is also a ratified
+Khronos extension where `EXT_texture_webp` is a vendor one.
+
+The difference is visible, not theoretical: Tokyo streamed **4** visible tiles on WebP and
+would not improve however long it settled; on KTX2 it reaches **37**. Transcoding and
+uploading a compressed texture is cheaper than decoding to RGBA8 and uploading that.
+
+So `TEXTURE_FORMAT=ktx2` wherever textures carry real image detail, and the `webp` default
+where they do not. Berlin's only texture is a 192-byte tiling window pattern; KTX2's
+container overhead alone would exceed it, and there is no VRAM problem to solve.
+
+Two traps, both silent:
+
+- **Basis cannot read WebP** and skips it with a *warning*, so asking for `ktx2` on
+  WebP-textured input produces a clean-looking run that encodes nothing. PLATEAU publishes
+  WebP, so `optimize-tiles.sh` runs `webp-to-png.py` first rather than leaving it to be
+  remembered.
+- **Reading KTX2 needs a transcoder**, vendored in `public/basis/`, and `detectSupport`
+  must see the real renderer. Get either wrong and materials simply have no map — the
+  building renders untextured, which reads as a styling choice rather than a broken asset.
+  `test/_citycheck.mjs` counts how many loaded textures are GPU-compressed for exactly
+  this reason.
+
+Encoding needs the `ktx` CLI from [KTX-Software](https://github.com/KhronosGroup/KTX-Software)
+on `PATH`; without it the run fails with an unhelpful `command -v ktx` error.
+
+### One content format
+
+Tile content is glTF (`.glb`) everywhere. `b3dm` is the 3D Tiles 1.0 container and 1.1
+carries glTF directly, so `tools/b3dm-to-glb.py` converts anything downloaded in the old
+format. That is not only tidiness: `optimize-tiles.sh` finds work with `-name '*.glb'`, so
+a b3dm tileset silently skipped every compression step.
+
+The RTC offset is the part that has to survive. b3dm tiles record their true centre as
+`RTC_CENTER` or the `CESIUM_RTC` extension; both are folded into a root node translation,
+which is equivalent and needs no extension to read. Drop it and the geometry lands near
+the centre of the earth. The batch table — per-feature IDs and usage codes — is discarded,
+since nothing here reads it; `EXT_structural_metadata` is where that goes if features ever
+need to be selectable.
 
 ## Hosting
 
@@ -342,14 +397,28 @@ how much city you can ship. Two things follow:
   committing `dist/`. Note that **Git LFS does not work with GitHub Pages** — it serves
   only the pointer files — so there is no way to sidestep the limit that way.
 
-If the tileset outgrows 1 GB, host it on Cloudflare R2 (zero egress fees) and set
-`VITE_TILESET_URL`. That's the only change needed.
+If the tilesets outgrow 1 GB, host them on Cloudflare R2 (zero egress fees) and set
+`VITE_TILES_BASE`. That's the only change needed — every city resolves its layers under
+that base, so one variable moves all of them.
+
+Current usage: Berlin Mitte 40 MB, Tokyo Shinjuku 74 MB — about 12% of the limit.
 
 ## Data & licensing
 
-Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) under
-**ODbL**, rendered with [OSM2World](https://osm2world.org/) (MIT, textures included —
-though this pipeline uses none of them).
+**Berlin Mitte** — map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright)
+under **ODbL**, rendered with [OSM2World](https://osm2world.org/) (MIT, textures included —
+though this pipeline uses almost none of them).
+
+**Tokyo Shinjuku** — 3D City Model © [Project PLATEAU](https://www.mlit.go.jp/plateau/),
+Ministry of Land, Infrastructure, Transport and Tourism, under **PDL 1.0**, which the
+site policy states is CC BY 4.0 compatible. It requires the source to be named and,
+separately, requires derived data to say it was modified. This build re-tiles and
+re-encodes what it downloads, so the in-app credit reads "processed for this build" —
+that is the second half of the licence, not politeness.
+
+Each city's credit is shown while *its* data is on screen: the lines are per-city in
+`src/cities.ts` and swap with the picker, because Berlin's OSM line is wrong over Tokyo's
+data and PLATEAU's is wrong over Berlin's.
 
 Baked geometry is a **Derivative Database** rather than a Produced Work, so the published
 tileset is offered under ODbL. Rendered frames are a Produced Work, so application code
