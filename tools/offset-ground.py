@@ -177,17 +177,17 @@ RAISED = {
 # start above where the nudge stops rather than at the couple of centimetres a
 # real door stands proud.
 NORMAL_OFFSETS = {
-    "#cfd6da": 0.056,  # BUILDING_WINDOWS / SINGLE_WINDOW
-    "#aac6d6": 0.056,  # GLASS
-    "#b3ccda": 0.056,  # GLASS_WALL
-    "#9b7c55": 0.064,  # WOOD
-    "#a08560": 0.064,  # WOOD_WALL
-    "#c2bcb2": 0.072,  # GARAGE_DOOR — set into a concrete wall
-    "#8d7a63": 0.072,  # ENTRANCE_DEFAULT — doors, same story
-    "#a8adb2": 0.080,  # CHAIN_LINK_FENCE / METAL_FENCE / HANDRAIL_DEFAULT
-    "#c9c4bb": 0.080,  # ADVERTISING_POSTER / BUS_STOP_SIGN — mounted on things
-    "#d8d5cf": 0.080,  # FLAGCLOTH / TENNIS_NET
-    "#9aa0a6": 0.088,  # METAL_FENCE_POST / POWER_TOWER_* — posts on their panel
+    "#cfd6da": 0.040,  # BUILDING_WINDOWS / SINGLE_WINDOW
+    "#aac6d6": 0.040,  # GLASS
+    "#b3ccda": 0.040,  # GLASS_WALL
+    "#9b7c55": 0.048,  # WOOD
+    "#a08560": 0.048,  # WOOD_WALL
+    "#c2bcb2": 0.056,  # GARAGE_DOOR — set into a concrete wall
+    "#8d7a63": 0.056,  # ENTRANCE_DEFAULT — doors, same story
+    "#a8adb2": 0.064,  # CHAIN_LINK_FENCE / METAL_FENCE / HANDRAIL_DEFAULT
+    "#c9c4bb": 0.064,  # ADVERTISING_POSTER / BUS_STOP_SIGN — mounted on things
+    "#d8d5cf": 0.064,  # FLAGCLOTH / TENNIS_NET
+    "#9aa0a6": 0.072,  # METAL_FENCE_POST / POWER_TOWER_* — posts on their panel
 }
 
 # A triangle counts as ground if it is near-horizontal and near y = 0. Both
@@ -251,21 +251,11 @@ MATCH_EPS = 2.0e-3
 # rather than 1 in 16 — but every pair that does *not* collide is now genuinely
 # separated, where before all of them tiled anyway.
 #
-# This now sits *below* the roof nudge rather than above it, taking 8-48 mm
-# while the nudge takes 56-176. The order is the point.
-#
-# Both push a roof face down, so whichever pushes further ends up underneath.
-# The previous layout gave unlisted colours the deeper range, and that inverted
-# real stacking: a glazed panel in the Humboldt Forum's courtyard was recessed
-# 96 mm while the default roof around it moved 32, so the glass ended up under
-# the roof and vanished. A default roof is nearly always the substrate and an
-# unlisted surface nearly always the thing resting on it, so the substrate is
-# what should travel further.
-#
-# Keeping this range shallow also bounds the damage where that assumption is
-# wrong: nothing here moves more than 48 mm from where OSM2World put it.
-FALLBACK_BASE = 0.0
-FALLBACK_STEPS = 6
+# The nudge takes 8-32 mm, so this takes the 40-96 mm above it. Unlike the steep
+# case there is no corner wedge to pay for — a recess in a roof is hidden by the
+# wall in front of it however deep it goes.
+FALLBACK_BASE = 0.032
+FALLBACK_STEPS = 8
 FALLBACK_STEP = 0.008
 
 # The same idea for unlisted materials *inside* the ground band, which LAYERS
@@ -311,7 +301,7 @@ GROUND_FALLBACK_STEPS = 3
 # look into a building's corner, against a facade that tiled over its whole area
 # at any distance before. The notch is worth it; it is also static, and a
 # flicker is what the eye actually catches.
-STEEP_FALLBACK_BASE = 0.088
+STEEP_FALLBACK_BASE = 0.072
 STEEP_FALLBACK_STEPS = 6
 STEEP_FALLBACK_STEP = 0.008
 
@@ -365,9 +355,7 @@ MIN_SEPARATION = 0.008
 # has to clear that ceiling, so it is duplicated rather than imported — the two
 # tools do not share a module, and a silent drift between them is exactly the
 # collision this whole scheme exists to prevent.
-# Roofs and walls stop at different places now, so both ceilings matter.
-ROOF_NUDGE_CEILING = 0.048 + 0.008 * 16
-WALL_NUDGE_CEILING = 0.008 * 6
+NUDGE_CEILING = 0.008 * 4
 
 
 def _check_separations() -> None:
@@ -389,7 +377,7 @@ def _check_separations() -> None:
         # Steep faces: the wall nudge, the detail set into walls, and the
         # unlisted-colour fallback all push outward along the same normal.
         "steep": sorted(
-            {(i + 1) * 0.008 for i in range(6)}
+            {(i + 1) * (NUDGE_CEILING / 4) for i in range(4)}
             | set(NORMAL_OFFSETS.values())
             | {STEEP_FALLBACK_BASE + (i + 1) * STEEP_FALLBACK_STEP for i in range(STEEP_FALLBACK_STEPS)}
         ),
@@ -398,8 +386,8 @@ def _check_separations() -> None:
         # Roofs recessed into the building: the nudge, then the fallback above
         # it. Both travel inward, so they share one axis.
         "roof": sorted(
-            {FALLBACK_BASE + (i + 1) * FALLBACK_STEP for i in range(FALLBACK_STEPS)}
-            | {0.048 + (i + 1) * 0.008 for i in range(16)}
+            {(i + 1) * (NUDGE_CEILING / 4) for i in range(4)}
+            | {FALLBACK_BASE + (i + 1) * FALLBACK_STEP for i in range(FALLBACK_STEPS)}
         ),
     }
     for name, levels in groups.items():
