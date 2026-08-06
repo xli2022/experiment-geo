@@ -184,14 +184,14 @@ tools/make-lowpoly-config.py vendor/osm2world/standard.properties \
     -o vendor/osm2world/lowpoly.properties
 
 # 4. Bake, separate the ground layers, vary the buildings, compress, root tileset
-tools/bake.sh berlin/all "52.4970,13.3560 52.5370,13.4220" 2 15
-tools/offset-ground.py public/tiles/berlin/all
-tools/vary-buildings.py public/tiles/berlin/all
-tools/optimize-tiles.sh public/tiles/berlin/all --no-simplify
-tools/make-root-tileset.py public/tiles/berlin/all
+tools/bake.sh berlin-mitte/all "52.4970,13.3560 52.5370,13.4220" 2 15
+tools/offset-ground.py public/tiles/berlin-mitte/all
+tools/vary-buildings.py public/tiles/berlin-mitte/all
+tools/optimize-tiles.sh public/tiles/berlin-mitte/all --no-simplify
+tools/make-root-tileset.py public/tiles/berlin-mitte/all
 
 # 5. Check the result — every surface that still shares a plane with another
-tools/find-coplanar.py public/tiles/berlin/all
+tools/find-coplanar.py public/tiles/berlin-mitte/all
 ```
 
 `offset-ground.py` fixes the z-fighting along kerbs, road edges and area

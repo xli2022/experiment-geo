@@ -32,7 +32,7 @@ Run on the raw bake, before tools/optimize-tiles.sh — Draco-compressed
 accessors have no readable buffer view.
 
 Usage:
-    tools/offset-ground.py public/tiles/berlin
+    tools/offset-ground.py public/tiles/berlin-mitte/all
 """
 
 from __future__ import annotations

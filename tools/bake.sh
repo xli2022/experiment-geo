@@ -9,7 +9,7 @@
 #   tools/bake.sh <city> <south,west north,east> [lod] [zoom]
 #
 # Example:
-#   tools/bake.sh berlin/all "52.5085,13.3805 52.5255,13.4035" 2
+#   tools/bake.sh berlin-mitte/all "52.5085,13.3805 52.5255,13.4035" 2
 #
 # Environment:
 #   OSM2WORLD_HOME  Directory containing OSM2World.jar (default: vendor/osm2world)
@@ -26,9 +26,11 @@ ZOOM="${4:-15}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OSM2WORLD_HOME="${OSM2WORLD_HOME:-$REPO_ROOT/vendor/osm2world}"
-# The argument is a path under public/tiles — "berlin/all", not "berlin" —
-# because a city holds one directory per layer. The extract is still per city,
-# so the default takes the first segment; "berlin/all" reads berlin.osm.pbf.
+# The argument is a path under public/tiles — "berlin-mitte/all", not a bare
+# city name — because a city holds one directory per layer. Extracts are still
+# named per city, so pass OSM_PBF explicitly when the area name and the extract
+# name differ, which they now do: berlin-mitte/all reads berlin.osm.pbf only if
+# you say so.
 CITY_NAME="${CITY%%/*}"
 OSM_PBF="${OSM_PBF:-$REPO_ROOT/vendor/extracts/$CITY_NAME.osm.pbf}"
 JAVA_HEAP="${JAVA_HEAP:-10g}"

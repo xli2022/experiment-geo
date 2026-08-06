@@ -30,7 +30,7 @@ Run this on the raw bake, before tools/optimize-tiles.sh — Draco-compressed
 accessors have no readable buffer view.
 
 Usage:
-    tools/vary-buildings.py public/tiles/berlin
+    tools/vary-buildings.py public/tiles/berlin-mitte/all
 """
 
 from __future__ import annotations

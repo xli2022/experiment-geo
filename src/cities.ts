@@ -85,16 +85,22 @@ const PLATEAU_CREDIT =
   '3D City Model © <a href="https://www.mlit.go.jp/plateau/" target="_blank" rel="noopener">' +
   'Project PLATEAU</a>, MLIT Japan · PDL 1.0, processed for this build';
 
-const BERLIN: City = {
-  id: 'berlin',
+// Neither city is a whole city, and the ids say so. This is a 5.2 x 5.2 km box
+// centred on Mitte — it takes in edges of Tiergarten, Kreuzberg, Friedrichshain
+// and Moabit, but Mitte is what it is about. Calling it `berlin` implied the
+// other 890 km² were in there somewhere.
+const BERLIN_MITTE: City = {
+  id: 'berlin-mitte',
   label: 'Berlin — Mitte',
   layers: [{ dir: 'all' }],
   anchor: { lat: 52.517, lon: 13.389 },
   attribution: OSM_CREDIT,
 };
 
-const SHINJUKU: City = {
-  id: 'shinjuku',
+// A 1.4 km radius around Nishi-Shinjuku, so the skyscraper district and the
+// station rather than the whole ward.
+const TOKYO_SHINJUKU: City = {
+  id: 'tokyo-shinjuku',
   label: 'Tokyo — Shinjuku',
   layers: [
     { dir: 'bldg' },
@@ -115,9 +121,9 @@ const SHINJUKU: City = {
 
 // Typed as non-empty so DEFAULT_CITY does not need a runtime check for a case
 // the source rules out.
-export const CITIES: readonly [City, ...City[]] = [BERLIN, SHINJUKU];
+export const CITIES: readonly [City, ...City[]] = [BERLIN_MITTE, TOKYO_SHINJUKU];
 
-export const DEFAULT_CITY = BERLIN;
+export const DEFAULT_CITY = BERLIN_MITTE;
 
 /** The city named by `?city=`, or the default when it names nothing known. */
 export function cityFromLocation(search = window.location.search): City {
