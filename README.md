@@ -34,11 +34,19 @@ npm run build       # typecheck + vite build
 
 | Input | Action |
 |---|---|
-| Mouse | Look |
+| Mouse | Look — needs pointer lock |
+| `←` `→` `↑` `↓` | Look, at ~80°/s — works without pointer lock |
 | `W` `A` `S` `D` | Move horizontally, relative to where you're looking |
 | `Q` / `E` | Move straight down / up, always world-aligned |
 | `Shift` | Boost (×4) |
 | `Esc` | Release the pointer |
+
+Arrows look rather than move because movement is already covered and turning is not:
+mouse look needs pointer lock, so before you click the canvas — or after `Esc` releases
+it — the camera can fly but cannot turn. Binding them to WASD's job would duplicate a
+capability instead of adding the missing one. Unlike the mouse, a held key reports only
+that it is down, so the angle comes from the frame time; `test/arrowLook.test.ts` pins
+that a one-second press turns the same amount at 30 fps and at 144.
 
 **Touch** — no pointer lock and no keyboard, so the scheme is different:
 

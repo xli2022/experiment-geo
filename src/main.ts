@@ -60,7 +60,7 @@ viewer.onUpdate((dt) => {
 // asking them to click and press keys they do not have.
 const CONTROL_HINT = matchMedia('(pointer: coarse)').matches
   ? 'left: move · right: look · buttons: climb'
-  : 'click to fly · WASD + QE · shift';
+  : 'click to fly · WASD + QE · arrows look · shift';
 
 viewer.start();
 

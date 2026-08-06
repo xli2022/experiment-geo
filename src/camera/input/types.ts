@@ -41,7 +41,12 @@ export interface InputSource {
    * Additive rather than assigning, so several sources compose. Sources holding
    * per-frame deltas (mouse movement, touch drag) must zero them here, or the
    * camera keeps turning after the input stops.
+   *
+   * `dt` is the frame time in seconds, for input that is a *rate* rather than a
+   * displacement. A mouse or a drag reports how far it actually moved, so it
+   * needs no clock; a held key reports only that it is down, and turning that
+   * into an angle without dt makes the turn speed depend on frame rate.
    */
-  sample(state: FlyInputState): void;
+  sample(state: FlyInputState, dt: number): void;
   dispose(): void;
 }

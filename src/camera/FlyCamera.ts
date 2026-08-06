@@ -98,7 +98,7 @@ export class FlyCamera {
 
   update(dt: number): void {
     resetInputState(this.state);
-    for (const source of this.sources) source.sample(this.state);
+    for (const source of this.sources) source.sample(this.state, dt);
 
     this.targetYaw += this.state.lookDx;
     this.targetPitch = clampPitch(this.targetPitch + this.state.lookDy);
