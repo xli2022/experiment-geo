@@ -153,8 +153,18 @@ def retarget_tilesets(root: str, centers: dict[str, list[float]]) -> int:
     """
     changed = 0
 
-    def fix(node: dict, base: str) -> None:
+    def fix(node: dict, base: str, inherited: tuple[float, float, float]) -> None:
+        """`inherited` is the translation this node already receives from above.
+
+        3D Tiles composes a tile's transform with its ancestors', so writing
+        each tile's absolute centre onto every node applies the offset once per
+        level. In PLATEAU's trees — five deep, with content at every level —
+        that put the city a whole multiple of the earth's radius away, while
+        the vegetation layers, which are one level deep, came out correct and
+        made it look like a per-layer problem.
+        """
         nonlocal changed
+        own = inherited
         content = node.get("content")
         if content and content.get("uri", "").endswith(".b3dm"):
             content["uri"] = content["uri"][: -len(".b3dm")] + ".glb"
@@ -162,21 +172,24 @@ def retarget_tilesets(root: str, centers: dict[str, list[float]]) -> int:
             key = os.path.normpath(os.path.join(base, content["uri"]))
             center = centers.get(key)
             if center and "transform" not in node:
+                # Only the part the ancestors do not already supply.
+                delta = [center[i] - inherited[i] for i in range(3)]
                 # glTF matrices are column-major, so the translation is last.
                 node["transform"] = [
                     1.0, 0.0, 0.0, 0.0,
                     0.0, 1.0, 0.0, 0.0,
                     0.0, 0.0, 1.0, 0.0,
-                    center[0], center[1], center[2], 1.0,
+                    delta[0], delta[1], delta[2], 1.0,
                 ]
+                own = tuple(center)
         for child in node.get("children", []):
-            fix(child, base)
+            fix(child, base, own)
 
     for path in glob.glob(os.path.join(root, "**", "*.json"), recursive=True):
         doc = json.load(open(path))
         if "root" not in doc:
             continue
-        fix(doc["root"], os.path.dirname(path))
+        fix(doc["root"], os.path.dirname(path), (0.0, 0.0, 0.0))
         # The container is the only thing that made this 1.0 rather than 1.1.
         doc.setdefault("asset", {})["version"] = "1.1"
         json.dump(doc, open(path, "w"), separators=(",", ":"))
