@@ -110,9 +110,12 @@ WALL_VARIANTS = (
 # nothing below 8 mm changed the number of fighting pixels at all — 2 mm was
 # indistinguishable from applying no nudge whatsoever.
 #
-# So 8 mm, and four levels rather than sixteen. Two components colliding is now
-# 1 in 4 instead of 1 in 16, which is worse; but the fifteen non-colliding cases
-# in sixteen were all tiling anyway, so a quarter fighting beats all of them.
+# So 8 mm. Paying for that in level *count* was the first attempt — four levels
+# instead of sixteen, on the grounds that the fifteen non-colliding cases in
+# sixteen were tiling anyway — and it cost more than it bought: exact ties went
+# from 2,838 to about 10,000, and an exact tie fights at every distance rather
+# than only far away. The count did not have to be paid at all, which is what
+# the split below is for.
 #
 # Roofs and walls get different *counts*, because their ceilings are set by
 # different things and sharing one number forced the wall's limit onto the roof
