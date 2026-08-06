@@ -41,7 +41,27 @@ for (const id of ids) {
     credit: document.getElementById('attribution').textContent.replace(/\s+/g, ' ').trim(),
     overlay: document.getElementById('overlay').hidden,
     msg: document.getElementById('overlay-msg').textContent,
-    tiles: window.app?.worlds?.[0]?.tiles?.visibleTiles?.size ?? 0,
+    tiles: (window.app?.worlds ?? []).reduce((n, w) => n + (w.tiles?.visibleTiles?.size ?? 0), 0),
+    // A KTX2 texture that fails to transcode — missing transcoder, or
+    // detectSupport never given the renderer — does not throw. The material
+    // simply has no map and the building renders untextured, which looks like
+    // a styling choice rather than a broken asset. So count them.
+    textures: (() => {
+      let withMap = 0, compressed = 0, meshes = 0;
+      for (const w of window.app?.worlds ?? []) {
+        w.tiles?.group?.traverse?.((o) => {
+          if (!o.isMesh) return;
+          meshes++;
+          for (const m of (Array.isArray(o.material) ? o.material : [o.material])) {
+            if (m?.map) {
+              withMap++;
+              if (m.map.isCompressedTexture) compressed++;
+            }
+          }
+        });
+      }
+      return { meshes, withMap, compressed };
+    })(),
     query: new URL(location.href).searchParams.get('city'),
   }));
 
@@ -51,6 +71,8 @@ for (const id of ids) {
     `\n${id}: ${ok ? 'OK' : 'FAILED'}\n` +
       `  visible tiles : ${state.tiles}${state.overlay ? '' : `\n  overlay still up: ${state.msg}`}\n` +
       `  url ?city=    : ${state.query ?? '(default, omitted)'}\n` +
+      `  meshes        : ${state.textures.meshes}, textured ${state.textures.withMap}` +
+      ` (${state.textures.compressed} GPU-compressed)\n` +
       `  credit        : ${state.credit}`,
   );
   await page.screenshot({ path: `${OUT}-${id}.png` });
