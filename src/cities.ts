@@ -65,7 +65,7 @@ const BERLIN: City = {
 const SHINJUKU: City = {
   id: 'shinjuku',
   label: 'Tokyo — Shinjuku',
-  url: `${TILES_BASE}shinjuku/tileset.json`,
+  url: `${TILES_BASE}shinjuku-lod1/tileset.json`,
   anchor: { lat: 35.6898, lon: 139.696 },
   attribution: PLATEAU_CREDIT,
   // PLATEAU ships buildings without terrain, so this supplies the missing
