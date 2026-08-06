@@ -58,7 +58,7 @@ for (const shot of SHOTS) {
   await page.evaluate((v) => window.__aim(v), shot);
   await page.waitForTimeout(4000);
   await page.screenshot({ path: `${OUT}-${shot.label}.png` });
-  const tiles = await page.evaluate(() => window.app?.world?.tiles?.visibleTiles?.size ?? 0);
+  const tiles = await page.evaluate(() => window.app?.worlds?.[0]?.tiles?.visibleTiles?.size ?? 0);
   console.log(`${shot.label}: ${tiles} visible tiles -> ${OUT}-${shot.label}.png`);
 }
 

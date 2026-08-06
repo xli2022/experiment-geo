@@ -25,7 +25,7 @@ console.log(
         triangles: i.render.triangles,
         drawCalls: i.render.calls,
         textures: i.memory.textures,
-        tiles: window.app.world.tiles.visibleTiles.size,
+        tiles: window.app.worlds[0].tiles.visibleTiles.size,
         alt: Math.round(window.app.viewer.camera.position.y),
       };
     }),

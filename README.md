@@ -70,6 +70,20 @@ other.
 
 ## The world
 
+### How the tiles are laid out
+
+```
+public/tiles/<city>/<layer>/tileset.json
+```
+
+One directory per city, one per layer inside it. Berlin bakes as a single
+tileset carrying ground, buildings and trees together, so its layer is `all`.
+PLATEAU splits a city into CityGML packages and publishes each as its own
+tileset, so Tokyo has `bldg`, `tran`, `wtr` and so on. The shape is the same
+either way, which is what lets a city be a list of layers rather than a special
+case per source.
+
+
 The shipped world is **low-poly**: OpenStreetMap geometry rendered by OSM2World with every
 texture removed and one flat colour per surface type. No photogrammetry, no imagery.
 
@@ -170,14 +184,14 @@ tools/make-lowpoly-config.py vendor/osm2world/standard.properties \
     -o vendor/osm2world/lowpoly.properties
 
 # 4. Bake, separate the ground layers, vary the buildings, compress, root tileset
-tools/bake.sh berlin "52.4970,13.3560 52.5370,13.4220" 2 15
-tools/offset-ground.py public/tiles/berlin
-tools/vary-buildings.py public/tiles/berlin
-tools/optimize-tiles.sh public/tiles/berlin --no-simplify
-tools/make-root-tileset.py public/tiles/berlin
+tools/bake.sh berlin/all "52.4970,13.3560 52.5370,13.4220" 2 15
+tools/offset-ground.py public/tiles/berlin/all
+tools/vary-buildings.py public/tiles/berlin/all
+tools/optimize-tiles.sh public/tiles/berlin/all --no-simplify
+tools/make-root-tileset.py public/tiles/berlin/all
 
 # 5. Check the result — every surface that still shares a plane with another
-tools/find-coplanar.py public/tiles/berlin
+tools/find-coplanar.py public/tiles/berlin/all
 ```
 
 `offset-ground.py` fixes the z-fighting along kerbs, road edges and area
@@ -309,7 +323,7 @@ vertices at 36 bytes each — which is exactly the redundancy Draco removes.
 **LOD is the other cost lever.** LOD 4 did not finish within 6 minutes on 4 cores for a
 small area; LOD 2 bakes a tile in ~25 s. Start low.
 
-Baked tiles land in `public/tiles/<city>/` and **are committed**, because that lets GitHub
+Baked tiles land in `public/tiles/<city>/<layer>/` and **are committed**, because that lets GitHub
 Pages deploy a working world straight from a push — no Java, no 478 MB download, no bake
 in CI. `tools/bake.sh` plus a pinned extract date remains the source of truth; re-bake when
 the world needs to change rather than casually, since each one adds a copy to git history.

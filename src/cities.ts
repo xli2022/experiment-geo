@@ -9,14 +9,45 @@
  * wrong for Berlin.
  */
 
-/** Where tilesets are served from. */
+/**
+ * Where tilesets are served from.
+ *
+ * Layout under it is `<city>/<layer>/tileset.json`, one directory per layer.
+ * Berlin bakes as a single tileset carrying ground, buildings and trees
+ * together, so its layer is `all`; PLATEAU splits a city into CityGML packages
+ * and each arrives as its own tileset, so Tokyo has `bldg`, `tran`, `wtr` and
+ * the rest. Keeping both under the same shape means a city is a list of layers
+ * either way, rather than a special case per source.
+ */
 const TILES_BASE = import.meta.env.VITE_TILES_BASE ?? `${import.meta.env.BASE_URL}tiles/`;
+
+/** One tileset within a city. */
+export interface Layer {
+  /** Directory under `<city>/`, e.g. `bldg`. */
+  readonly dir: string;
+  /**
+   * Draw at a coarser screen-space error than the city default.
+   *
+   * Roads and vegetation are backdrop: they cover the whole ground plane and
+   * carry far less of what you look at than the buildings do, so refining them
+   * to the same tolerance spends memory where it does not show.
+   */
+  readonly errorTarget?: number;
+}
 
 export interface City {
   /** Stable key. Appears in the URL, so renaming one breaks shared links. */
   readonly id: string;
   readonly label: string;
-  readonly url: string;
+  /**
+   * Tilesets making up this city, drawn together.
+   *
+   * More than one because PLATEAU publishes a city as separate CityGML
+   * packages — buildings, roads, water, vegetation — rather than one combined
+   * tileset. Berlin's OSM2World bake carries all of that in a single file, so
+   * it lists exactly one.
+   */
+  readonly layers: readonly Layer[];
   /**
    * Point to place at the world origin. Pinning it keeps the opening view over
    * the same part of the city across re-bakes, rather than drifting with the
@@ -57,7 +88,7 @@ const PLATEAU_CREDIT =
 const BERLIN: City = {
   id: 'berlin',
   label: 'Berlin — Mitte',
-  url: `${TILES_BASE}berlin/tileset.json`,
+  layers: [{ dir: 'all' }],
   anchor: { lat: 52.517, lon: 13.389 },
   attribution: OSM_CREDIT,
 };
@@ -65,11 +96,20 @@ const BERLIN: City = {
 const SHINJUKU: City = {
   id: 'shinjuku',
   label: 'Tokyo — Shinjuku',
-  url: `${TILES_BASE}shinjuku-lod1/tileset.json`,
+  layers: [
+    { dir: 'bldg' },
+    // Backdrop layers, held coarser than the buildings on purpose.
+    { dir: 'tran', errorTarget: 24 },
+    { dir: 'wtr', errorTarget: 24 },
+    { dir: 'veg-cover', errorTarget: 32 },
+    { dir: 'veg-trees', errorTarget: 32 },
+  ],
   anchor: { lat: 35.6898, lon: 139.696 },
   attribution: PLATEAU_CREDIT,
-  // PLATEAU ships buildings without terrain, so this supplies the missing
-  // ground. Shinjuku's is a little under the ellipsoid the anchor sits on.
+  // PLATEAU has no terrain relief for Shinjuku — there is no `dem` package in
+  // the catalogue at all — and `tran` covers only the carriageways, so the
+  // blocks between them would still be sky. The sheet fills those in under
+  // everything else.
   ground: { color: '#8a8f83', depth: 4 },
 };
 
@@ -92,6 +132,11 @@ export function cityFromLocation(search = window.location.search): City {
  * navigating, and stacking entries would make Back walk through every city the
  * user tried instead of leaving the page.
  */
+/** Absolute tileset URL for one of a city's layers. */
+export function layerUrl(city: City, layer: Layer): string {
+  return `${TILES_BASE}${city.id}/${layer.dir}/tileset.json`;
+}
+
 export function rememberCity(city: City): void {
   const url = new URL(window.location.href);
   if (city.id === DEFAULT_CITY.id) url.searchParams.delete('city');

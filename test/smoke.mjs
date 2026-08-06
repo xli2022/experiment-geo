@@ -58,8 +58,8 @@ try {
       triangles: info.render.triangles,
       drawCalls: info.render.calls,
       textures: info.memory.textures,
-      visibleTiles: app.world.tiles.visibleTiles.size,
-      rootLoaded: Boolean(app.world.tiles.rootTileset),
+      visibleTiles: app.worlds[0].tiles.visibleTiles.size,
+      rootLoaded: Boolean(app.worlds[0].tiles.rootTileset),
     };
   });
   if (screenshot) await page.screenshot({ path: screenshot });

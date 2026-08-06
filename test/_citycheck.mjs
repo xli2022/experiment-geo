@@ -41,7 +41,7 @@ for (const id of ids) {
     credit: document.getElementById('attribution').textContent.replace(/\s+/g, ' ').trim(),
     overlay: document.getElementById('overlay').hidden,
     msg: document.getElementById('overlay-msg').textContent,
-    tiles: window.app?.world?.tiles?.visibleTiles?.size ?? 0,
+    tiles: window.app?.worlds?.[0]?.tiles?.visibleTiles?.size ?? 0,
     query: new URL(location.href).searchParams.get('city'),
   }));
 

@@ -9,7 +9,7 @@
 #   tools/bake.sh <city> <south,west north,east> [lod] [zoom]
 #
 # Example:
-#   tools/bake.sh berlin "52.5085,13.3805 52.5255,13.4035" 2
+#   tools/bake.sh berlin/all "52.5085,13.3805 52.5255,13.4035" 2
 #
 # Environment:
 #   OSM2WORLD_HOME  Directory containing OSM2World.jar (default: vendor/osm2world)
@@ -26,7 +26,11 @@ ZOOM="${4:-15}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OSM2WORLD_HOME="${OSM2WORLD_HOME:-$REPO_ROOT/vendor/osm2world}"
-OSM_PBF="${OSM_PBF:-$REPO_ROOT/vendor/extracts/$CITY.osm.pbf}"
+# The argument is a path under public/tiles — "berlin/all", not "berlin" —
+# because a city holds one directory per layer. The extract is still per city,
+# so the default takes the first segment; "berlin/all" reads berlin.osm.pbf.
+CITY_NAME="${CITY%%/*}"
+OSM_PBF="${OSM_PBF:-$REPO_ROOT/vendor/extracts/$CITY_NAME.osm.pbf}"
 JAVA_HEAP="${JAVA_HEAP:-10g}"
 O2W_CONFIG="${O2W_CONFIG:-$OSM2WORLD_HOME/lowpoly.properties}"
 OUT_DIR="$REPO_ROOT/public/tiles/$CITY"

@@ -6,7 +6,7 @@ import { setupLighting } from './scene/lighting';
 import { Ground } from './scene/ground';
 import { Hud, formatDistance } from './ui/Hud';
 import { CityPicker } from './ui/CityPicker';
-import { CITIES, cityFromLocation, rememberCity, type City } from './cities';
+import { CITIES, cityFromLocation, layerUrl, rememberCity, type City } from './cities';
 import { ERROR_TARGET, START_ALTITUDE } from './config';
 
 const viewer = new Viewer(document.body);
@@ -16,7 +16,8 @@ const lighting = setupLighting(viewer.scene, viewer.renderer);
 
 const flyCamera = new FlyCamera(viewer.camera, viewer.canvas);
 
-let world: TilesetSource | null = null;
+/** Every tileset of the current city. The first is the one framing waits on. */
+let worlds: TilesetSource[] = [];
 let ground: Ground | null = null;
 let city = cityFromLocation();
 
@@ -35,7 +36,8 @@ function loadCity(next: City): void {
   hud.setAttribution(next.attribution);
   rememberCity(next);
 
-  world?.dispose();
+  for (const w of worlds) w.dispose();
+  worlds = [];
   ground?.dispose();
   ground = null;
   if (next.ground) {
@@ -43,10 +45,16 @@ function loadCity(next: City): void {
     ground.attach(viewer.scene);
   }
 
-  world = new TilesetSource(next.url, viewer.renderer, {
-    errorTarget: ERROR_TARGET,
-    anchor: next.anchor,
-    onReady: ({ origin, radius }) => {
+  // Every layer is anchored to the same point, so they land in one frame
+  // rather than each recentring on its own bounding sphere.
+  worlds = next.layers.map((layer, i) =>
+    new TilesetSource(layerUrl(next, layer), viewer.renderer, {
+      errorTarget: layer.errorTarget ?? ERROR_TARGET,
+      anchor: next.anchor,
+      // Only the first layer drives framing and the overlay. The rest stream in
+      // behind it; waiting for all of them would hold a blank screen until the
+      // slowest backdrop finished.
+      onReady: i > 0 ? undefined : ({ origin, radius }) => {
       // The tileset recentres itself on its own bounding sphere, so the world
       // origin is its middle. Back off far enough to see the whole thing.
       const distance = Math.max(radius * 1.2, next.startAltitude ?? START_ALTITUDE);
@@ -58,22 +66,24 @@ function loadCity(next: City): void {
 
       hud.setOverlay(null);
       picker.setBusy(false);
-      console.info(
-        `${next.label} ready at ${origin.lat.toFixed(5)}, ${origin.lon.toFixed(5)} ` +
-          `(radius ${radius.toFixed(0)} m)`,
-      );
-    },
-    onError: (error) => {
-      console.error(error);
-      // Re-enable the picker on failure, or a city that fails to load strands
-      // the user with no way to choose another.
-      picker.setBusy(false);
-      hud.setOverlay(`Could not load ${next.label}.\n${error.message}`);
-    },
-  });
+        console.info(
+          `${next.label} ready at ${origin.lat.toFixed(5)}, ${origin.lon.toFixed(5)} ` +
+            `(radius ${radius.toFixed(0)} m)`,
+        );
+      },
+      onError: (error) => {
+        console.error(error);
+        // A backdrop layer failing should not strand the city — only the layer
+        // that framing depends on puts the overlay up.
+        if (i > 0) return;
+        picker.setBusy(false);
+        hud.setOverlay(`Could not load ${next.label}.\n${error.message}`);
+      },
+    }),
+  );
 
-  world.attach(viewer.scene);
-  if (window.app) window.app.world = world;
+  for (const w of worlds) w.attach(viewer.scene);
+  if (window.app) window.app.worlds = worlds;
   // tools/capture-ortho.mjs reads this to georeference the raster it renders.
   (window as unknown as { __anchor?: unknown }).__anchor = next.anchor;
 }
@@ -82,7 +92,7 @@ const picker = new CityPicker(CITIES, city, loadCity);
 
 viewer.onUpdate((dt) => {
   flyCamera.update(dt);
-  world?.update(viewer.camera, dt);
+  for (const w of worlds) w.update(viewer.camera, dt);
   // After the camera moves, so the shadow camera is fitted to where the view
   // actually is this frame rather than trailing it by one.
   lighting.update(viewer.camera);
@@ -90,7 +100,7 @@ viewer.onUpdate((dt) => {
   hud.update(dt, {
     alt: formatDistance(flyCamera.altitude),
     spd: `${flyCamera.speed.toFixed(0)} m/s`,
-    tiles: String(world?.tiles.visibleTiles.size ?? 0),
+    tiles: String(worlds.reduce((n, w) => n + w.tiles.visibleTiles.size, 0)),
     ...(flyCamera.isLocked ? {} : { '': CONTROL_HINT }),
   });
 });
@@ -106,13 +116,13 @@ declare global {
   interface Window {
     app?: {
       viewer: Viewer;
-      world: TilesetSource | null;
+      worlds: TilesetSource[];
       flyCamera: FlyCamera;
       THREE: typeof THREE;
     };
   }
 }
-window.app = { viewer, world, flyCamera, THREE };
+window.app = { viewer, worlds, flyCamera, THREE };
 
 loadCity(city);
 viewer.start();
