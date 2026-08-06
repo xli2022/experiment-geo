@@ -81,7 +81,7 @@
       "max": [
         375.2955017089844,
         30,
-        375.261962890625
+        375.30084228515625
       ],
       "min": [
         -375.2958068847656,
@@ -109,12 +109,12 @@
     {
       "buffer": 0,
       "byteOffset": 660,
-      "byteLength": 643422
+      "byteLength": 661143
     },
     {
       "buffer": 0,
-      "byteOffset": 644082,
-      "byteLength": 118546
+      "byteOffset": 661803,
+      "byteLength": 118700
     }
   ],
   "samplers": [
@@ -144,7 +144,7 @@
   "buffers": [
     {
       "uri": "10749.glb.bin",
-      "byteLength": 762628
+      "byteLength": 780503
     }
   ],
   "materials": [

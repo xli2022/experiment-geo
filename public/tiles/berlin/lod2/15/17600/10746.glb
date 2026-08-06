@@ -54,7 +54,7 @@
         375.0771789550781
       ],
       "min": [
-        -375.1006164550781,
+        -375.1448059082031,
         -0.23999999463558197,
         -375.1051330566406
       ]
@@ -109,11 +109,11 @@
     {
       "buffer": 0,
       "byteOffset": 615,
-      "byteLength": 578746
+      "byteLength": 597170
     },
     {
       "buffer": 0,
-      "byteOffset": 579361,
+      "byteOffset": 597785,
       "byteLength": 22270
     }
   ],
@@ -144,7 +144,7 @@
   "buffers": [
     {
       "uri": "10746.glb.bin",
-      "byteLength": 601631
+      "byteLength": 620055
     }
   ],
   "materials": [

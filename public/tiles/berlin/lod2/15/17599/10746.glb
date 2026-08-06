@@ -49,14 +49,14 @@
       "componentType": 5126,
       "count": 748,
       "max": [
-        94.25199890136719,
+        94.2938003540039,
         9.699999809265137,
-        354.5179138183594
+        354.5734558105469
       ],
       "min": [
         -107.15499877929688,
         2.200000047683716,
-        -40.03099822998047
+        -40.03815460205078
       ]
     },
     {
@@ -104,17 +104,17 @@
     {
       "buffer": 0,
       "byteOffset": 0,
-      "byteLength": 507828
+      "byteLength": 524641
     },
     {
       "buffer": 0,
-      "byteOffset": 507828,
-      "byteLength": 1446
+      "byteOffset": 524641,
+      "byteLength": 1805
     },
     {
       "buffer": 0,
-      "byteOffset": 509274,
-      "byteLength": 40888
+      "byteOffset": 526446,
+      "byteLength": 41034
     }
   ],
   "samplers": [
@@ -144,7 +144,7 @@
   "buffers": [
     {
       "uri": "10746.glb.bin",
-      "byteLength": 550162
+      "byteLength": 567480
     }
   ],
   "materials": [

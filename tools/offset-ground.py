@@ -102,6 +102,40 @@ RIGID = {
     "#9aa0a6": 0.025,  # METAL_FENCE_POST / POWER_TOWER_*
 }
 
+# Horizontal surfaces *above* the ground, i.e. roof coverings sitting on the
+# roof structure they clad.
+#
+# This is the case the other three tables all miss: LAYERS only looks near
+# y = 0, NORMAL_OFFSETS only moves steep faces, and the per-component nudge in
+# vary-buildings.py only knows about ROOF_DEFAULT and BUILDING_DEFAULT. A
+# copper dome, a glazed courtyard roof or a run of solar panels is none of
+# those, so nothing separated it from the roof underneath and the two tiled
+# against each other across the whole surface — the dense stipple over a large
+# area, rather than the thin lines that coplanar *edges* produce.
+#
+# Displacement is along each face's own normal rather than straight up, so a
+# curved or pitched covering is handled the same as a flat one. A dome pushed
+# out along its normals is simply a slightly larger dome; pushed straight up it
+# would separate at the top and stay welded at the sides, which is where a
+# horizontal-only rule failed.
+#
+# Values are distinct per material for the usual reason: sharing a level moves
+# the fight rather than ending it.
+RAISED = {
+    "#a2a8ae": 0.030,  # STEEL
+    "#6d7278": 0.034,  # SLATE
+    "#bd6f52": 0.038,  # TILES
+    "#79ad97": 0.042,  # COPPER_ROOF — the Bode's dome, among others
+    "#c0a068": 0.046,  # THATCH_ROOF
+    "#e8e6e0": 0.050,  # MARBLE
+    "#d8c9a4": 0.054,  # SANDSTONE
+    "#b5b0a6": 0.058,  # STONE
+    "#b06f5a": 0.062,  # BRICK
+    "#aac6d6": 0.066,  # GLASS_ROOF / GLASS — glazing over a courtyard
+    "#b3ccda": 0.070,  # GLASS_WALL, where it caps something
+    "#3f4a5c": 0.078,  # SOLAR_PANEL — genuinely mounted above the roof
+}
+
 # Surfaces pushed out along their own normal rather than upward, because they
 # are set flush into whatever they belong to and a vertical face cannot be
 # separated by a change in height.
@@ -162,11 +196,12 @@ def main() -> int:
     layers = [(np.array(hex_to_linear(h)), dy) for h, dy in LAYERS.items()]
     rigid = [(np.array(hex_to_linear(h)), dy) for h, dy in RIGID.items()]
     along = [(np.array(hex_to_linear(h)), d) for h, d in NORMAL_OFFSETS.items()]
+    raised = [(np.array(hex_to_linear(h)), d) for h, d in RAISED.items()]
 
     total = 0
     tiles = 0
     for path in paths:
-        moved = process(path, layers, rigid, along)
+        moved = process(path, layers, rigid, along, raised)
         if moved is None:
             continue
         total += moved
@@ -178,7 +213,7 @@ def main() -> int:
     return 0
 
 
-def process(path: str, layers, rigid, along) -> int | None:
+def process(path: str, layers, rigid, along, raised) -> int | None:
     with open(path, "rb") as fh:
         data = fh.read()
     if data[:4] != b"glTF":
@@ -240,6 +275,19 @@ def process(path: str, layers, rigid, along) -> int | None:
             # +0.094, which is precisely PAVING_STONE's level, turning 118
             # conflicts into 293. Horizontal surfaces belong to LAYERS, which
             # assigns levels deliberately rather than by accident.
+            # Roof coverings, at any orientation, as long as they are clear of
+            # the ground band that LAYERS owns. Gating on height rather than on
+            # facing is what lets this reach a dome: its faces point in every
+            # direction, so a horizontal-only test misses most of it and a
+            # steep-only test misses the rest.
+            high = positions[:, 1] > GROUND_BAND
+            for base, dist in raised:
+                matched = np.all(np.abs(colors - base) < MATCH_EPS, axis=1) & high
+                if not matched.any():
+                    continue
+                positions[matched] += normals[matched] * dist
+                moved += int(matched.sum())
+
             steep = np.abs(normals[:, 1]) < 0.7
             for base, dist in along:
                 matched = np.all(np.abs(colors - base) < MATCH_EPS, axis=1) & steep

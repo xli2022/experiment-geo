@@ -19,7 +19,7 @@
       "componentType": 5126,
       "count": 163375,
       "max": [
-        374.9980773925781,
+        375.0004577636719,
         47.5,
         374.9920349121094
       ],
@@ -74,11 +74,11 @@
     {
       "buffer": 0,
       "byteOffset": 0,
-      "byteLength": 342159
+      "byteLength": 348575
     },
     {
       "buffer": 0,
-      "byteOffset": 342159,
+      "byteOffset": 348575,
       "byteLength": 34703
     }
   ],
@@ -109,7 +109,7 @@
   "buffers": [
     {
       "uri": "10744.glb.bin",
-      "byteLength": 376862
+      "byteLength": 383278
     }
   ],
   "materials": [

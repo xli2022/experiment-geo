@@ -34,7 +34,14 @@ export class Viewer {
   private composer: EffectComposer | null = null;
 
   constructor(container: HTMLElement = document.body, options: ViewerOptions = {}) {
-    const { near = 0.5, far = 80_000, fov = 60, ambientOcclusion = true } = options;
+    // The near plane is the single biggest lever on depth precision, and 0.5 m
+    // buys nothing here: this is a camera that flies over a city, so the
+    // nearest thing it ever meaningfully approaches is a roof. Against an
+    // 80 km far plane, 0.5 m is a 160,000:1 ratio; 2 m cuts that fourfold for
+    // free. It matters most on phones, where the depth buffer is often
+    // shallower than the desktop one this is developed against, and coplanar
+    // surfaces that resolve here can still tile against each other there.
+    const { near = 2, far = 80_000, fov = 60, ambientOcclusion = true } = options;
 
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,

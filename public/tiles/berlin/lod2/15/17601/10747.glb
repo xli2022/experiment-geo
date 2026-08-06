@@ -21,7 +21,7 @@
       "max": [
         375.1470031738281,
         103,
-        375.1468505859375
+        375.2162780761719
       ],
       "min": [
         -375.1708984375,
@@ -50,7 +50,7 @@
       "count": 2073,
       "max": [
         375.1440734863281,
-        12.5,
+        12.565999984741211,
         360.0751647949219
       ],
       "min": [
@@ -104,16 +104,16 @@
     {
       "buffer": 0,
       "byteOffset": 0,
-      "byteLength": 943938
+      "byteLength": 968335
     },
     {
       "buffer": 0,
-      "byteOffset": 943938,
-      "byteLength": 4274
+      "byteOffset": 968335,
+      "byteLength": 4641
     },
     {
       "buffer": 0,
-      "byteOffset": 948212,
+      "byteOffset": 972976,
       "byteLength": 29843
     }
   ],
@@ -144,7 +144,7 @@
   "buffers": [
     {
       "uri": "10747.glb.bin",
-      "byteLength": 978055
+      "byteLength": 1002819
     }
   ],
   "materials": [
