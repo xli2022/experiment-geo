@@ -189,6 +189,26 @@ if (( OK == 0 )); then
   exit 1
 fi
 
+# Collapse OSM2World's `lod<N>/` level, which carries no information here.
+#
+# It writes lod<N>/<z>/<x>/<y>.glb, anticipating several detail levels side by
+# side. This project bakes one, and where two *would* live together they belong
+# in separate layer directories under the city — tiles/<city>/<layer>/ — not in
+# a level nested inside one layer. So the directory only ever holds a single
+# entry and adds a path component that means nothing.
+#
+# <z>/<x>/<y> stays: make-root-tileset.py reads the last three components to
+# recover each tile's true bounding region, since OSM2World stamps every tile
+# with the bounds of the whole bake. Flattening those away would silently
+# reinstate that bug.
+shopt -s nullglob
+for LOD_DIR in "$OUT_DIR"/lod*/; do
+  [[ -d "$LOD_DIR" ]] || continue
+  mv "$LOD_DIR"*/ "$OUT_DIR"/ 2>/dev/null || true
+  rmdir "$LOD_DIR" 2>/dev/null || true
+done
+shopt -u nullglob
+
 SIZE_BYTES=$(du -sb "$OUT_DIR" | cut -f1)
 echo "  size:   $(du -sh "$OUT_DIR" | cut -f1) (before tools/optimize-tiles.sh)"
 echo
