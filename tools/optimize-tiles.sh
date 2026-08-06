@@ -81,6 +81,13 @@ QUANTIZE_POSITION="${QUANTIZE_POSITION:-20}"
 # "command -v ktx" error.
 TEXTURE_FORMAT="${TEXTURE_FORMAT:-webp}"
 
+# Basis cannot read WebP, and skips it with a warning rather than failing — so
+# asking for ktx2 on WebP-textured tiles produces a clean-looking run that
+# encoded nothing. PLATEAU ships exactly that, so decode first.
+if [[ "$TEXTURE_FORMAT" == "ktx2" ]]; then
+  "$(dirname "${BASH_SOURCE[0]}")/webp-to-png.py" "$TILES_DIR"
+fi
+
 for glb in "${GLBS[@]}"; do
   # The temporary names have to keep the .glb extension. gltf-transform picks
   # its container from the extension alone, so writing to "$glb.opt" produced
