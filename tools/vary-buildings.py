@@ -99,7 +99,7 @@ WALL_VARIANTS = (
 #
 # The step count is what decides how well this works: two coincident components
 # stay tied whenever their hashes pick the same step, so the collision rate is
-# 1/NUDGE_STEPS and nothing else changes it.
+# 1/steps for whichever lattice applies, and nothing else changes it.
 #
 # The step *size* used to be set by the Draco grid in tools/optimize-tiles.sh —
 # 0.72 mm at 20 bits — on the reasoning that anything coarser survives
@@ -114,15 +114,49 @@ WALL_VARIANTS = (
 # 1 in 4 instead of 1 in 16, which is worse; but the fifteen non-colliding cases
 # in sixteen were all tiling anyway, so a quarter fighting beats all of them.
 #
-# The range stops at 32 mm so it stays clear of the offsets stacked above it in
-# offset-ground.py — windows at 40 mm, doors at 56, the unlisted-colour fallback
-# from 80. They have to be disjoint rather than merely different: all of them
-# push along a surface's own normal, so a component whose nudge equals a
-# neighbour's level is exactly coplanar with it. It also has to stop below the
-# windows and doors for a second reason — they carry their own colours and so
-# never receive this nudge, and a wall that overtook them would swallow them.
+# Roofs and walls get different *counts*, because their ceilings are set by
+# different things and sharing one number forced the wall's limit onto the roof
+# for no reason.
+#
+# A wall travels outward, where going too far separates it from the wall it
+# meets at a corner and opens a notch as wide as the push. 48 mm is the budget
+# that has always applied, so a wall gets six levels of 8 mm.
+#
+# A roof travels inward, into the building, where the wall in front hides it.
+# Nothing about a corner constrains that, so a roof can have sixteen levels —
+# and it needs them far more than the wall does. Two components collide when
+# their hashes pick the same level, at a rate of exactly 1/steps, and with four
+# levels that was one adjacent pair in four coming out perfectly coplanar. It
+# showed: a scan of the last bake found ~10,000 pairs at exactly 0.0 mm, and the
+# largest families in it were all one roof variant against another. Sixteen puts
+# that back to 1/16.
+#
+# The roof range starts at 48 mm rather than 0, above where the unlisted-colour
+# fallback in offset-ground.py stops. That order is deliberate and it is the
+# reverse of the previous arrangement. Both push roofs down, so whichever pushes
+# *further* ends up underneath, and the previous layout put unlisted colours
+# deepest — which sank a glazed panel in the Humboldt Forum's courtyard below
+# the roof around it. A default roof is nearly always the substrate and the
+# unlisted surface nearly always the thing sitting on it, so sending the
+# substrate deeper preserves that order instead of inverting it.
 NUDGE_STEP = 0.008
-NUDGE_STEPS = 4
+ROOF_NUDGE_STEPS = 16
+ROOF_NUDGE_BASE = 0.048
+WALL_NUDGE_STEPS = 6
+WALL_NUDGE_BASE = 0.0
+
+
+def nudge_distance(direction: float, h: int) -> float:
+    """Signed displacement along the surface normal for one component.
+
+    Never zero: a component that does not move stays tied to every neighbour
+    this tool never touched — an OSM-coloured roof, a concrete deck.
+    """
+    if direction < 0:
+        steps, base = ROOF_NUDGE_STEPS, ROOF_NUDGE_BASE
+    else:
+        steps, base = WALL_NUDGE_STEPS, WALL_NUDGE_BASE
+    return direction * (base + ((h % steps) + 1) * NUDGE_STEP)
 
 # (label, base colour, variants, nudge direction).
 #
@@ -263,13 +297,8 @@ def process(path: str, targets: list, weld: float) -> dict[str, int] | None:
                     if normals is not None:
                         # Same hash, so a component's nudge is as stable across
                         # re-bakes as its colour.
-                        # +1 so the nudge is never zero. A component that does
-                        # not move stays tied to every neighbour this tool never
-                        # touched — an OSM-coloured roof, a concrete deck — and
-                        # one step of the hash landing on zero was what left
-                        # those pairs fighting.
                         positions[verts] += normals[verts] * (
-                            direction * ((h % NUDGE_STEPS) + 1) * NUDGE_STEP
+                            nudge_distance(direction, h)
                         )
                     counts[name] += 1
                     changed = True
