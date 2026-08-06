@@ -122,11 +122,16 @@ const TOKYO_SHINJUKU: City = {
     { dir: 'veg-cover', errorTarget: 32 },
     { dir: 'veg-trees', errorTarget: 32 },
   ],
-  // Height matters here in a way it does not for Berlin. PLATEAU places
-  // buildings at their true elevation — the lowest base in this area is 53 m
-  // above the ellipsoid — while the anchor defaults to 0, so the city hung
-  // 53 m in the air above its own ground sheet.
-  anchor: { lat: 35.6898, lon: 139.696, height: 53 },
+  // Height matters here in a way it does not for Berlin, whose bake carries
+  // its own ground. PLATEAU places buildings at their true elevation, so
+  // without this the city hangs above the ground sheet.
+  //
+  // Measured from the loaded geometry rather than taken from the tileset's
+  // bounding-volume regions, which claim the lowest base sits at 53 m and do
+  // not agree with where the meshes actually are: anchored at 53 the median
+  // building base came out 147 m *below* the sheet. The anchor is whatever
+  // puts that median at zero.
+  anchor: { lat: 35.6898, lon: 139.696, height: -94 },
   attribution: PLATEAU_CREDIT,
   material: { metalness: 0, roughness: 1 },
   // PLATEAU has no terrain relief for Shinjuku — there is no `dem` package in
