@@ -24,14 +24,19 @@ import * as THREE from 'three';
  * per-building styling the roadmap wants is not blocked on the feature-ID work,
  * only made permanent by it.
  *
- * The band count is the part to throw away. Posterizing the finished frame is
- * the "blanket cartoon filter" the roadmap lists under Avoid, and the reason is
- * measurable rather than aesthetic: quantizing R, G and B independently at four
- * levels lands a muted `#b9a894` in three different bands and returns saturated
- * orange. The whole palette came back as primaries. Banding cannot be a
- * post-process over colour — it has to quantize the *lighting term* before it
- * multiplies albedo, which is what toon shading actually is and what the next
- * pass should implement.
+ * `palette` with banded *lighting* is the target, and it reads. Flat colour per
+ * building, cel boundaries on the massing, Shinjuku's real street layout and
+ * density intact, at ground level and from 700 m.
+ *
+ * Banding the finished frame is what does not work, and it is worth keeping
+ * written down because it is the "blanket cartoon filter" the roadmap lists
+ * under Avoid — the reason turns out to be measurable rather than aesthetic.
+ * Quantizing R, G and B independently at four levels lands a muted `#b9a894` in
+ * three different bands and returns saturated orange; the whole palette came
+ * back as primaries. Quantizing luminance and rescaling to match is no better,
+ * because it divides by luminance and every channel above the average clips.
+ * Colour cannot be quantized and stay itself. Light can, so stylize.ts bands
+ * the lighting term and leaves albedo untouched.
  */
 export type StyleId = 'source' | 'graded' | 'toon' | 'palette';
 

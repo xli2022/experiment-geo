@@ -77,42 +77,49 @@ export function stylize(mesh: THREE.Mesh, profile: StyleProfile, kind: StyleKind
              // Desaturate toward the photograph's own luminance first, so the
              // mix keeps the facade's light and shade instead of flattening it.
              vec3 base = mix( diffuseColor.rgb, vec3( lum ), uDesaturate );
-             // At full mix the photograph is gone, but its luminance still
-             // modulates the flat colour — otherwise every building becomes a
-             // single unshaded slab and the massing disappears.
-             vec3 tinted = vStyleColor * ( 0.65 + 0.7 * lum );
+             // Only a trace of the photograph's luminance survives into the
+             // flat colour. An earlier version leaned on it heavily, because
+             // without it every building was an unshaded slab — but that was
+             // compensating for having no toon shading yet. Now the banded
+             // lighting term supplies the massing, so the albedo can be nearly
+             // flat, which is the whole point of a palette.
+             vec3 tinted = vStyleColor * ( 0.88 + 0.24 * lum );
              diffuseColor.rgb = mix( base, tinted, uPaletteMix );
            }`,
         )
         .replace(
-          '#include <colorspace_fragment>',
-          `#include <colorspace_fragment>
-           if ( uBands > 0.0 ) {
-             // Posterize in a perceptual space, whatever space this target is.
+          '#include <opaque_fragment>',
+          `if ( uBands > 0.0 ) {
+             // Toon shading: quantize the light, never the colour.
              //
-             // Banding after <colorspace_fragment> looks like it lands in
-             // display sRGB, and standalone it would. But Viewer renders the
-             // scene into an EffectComposer target for GTAO, and that target is
-             // linear — so linearToOutputTexel is the identity here and the
-             // values arriving are linear radiance, where most of a city sits
-             // below 0.25 and collapses into one or two bands. Measured, that
-             // made the textured rung indistinguishable from the flat one:
-             // both came out uniform grey, which read as the style failing
-             // rather than the shader being in the wrong space.
+             // The obvious version of this posterizes the finished frame, and
+             // it is wrong for a reason worth keeping written down. Banding R,
+             // G and B independently at four levels puts a muted #b9a894 into
+             // three different bands and returns saturated orange — measured on
+             // this bake, a palette of greys and sands came back as primaries.
+             // Banding luminance instead and rescaling the colour to match is
+             // no better: it divides by luminance, so any channel above the
+             // average clips. Colour cannot be quantized and stay itself.
              //
-             // The gamma round trip makes the steps land where the eye puts
-             // them and hands back whatever the target expects.
-             vec3 disp = pow( max( gl_FragColor.rgb, vec3( 0.0 ) ), vec3( 1.0 / 2.2 ) );
+             // Light can. outgoingLight is albedo times the lighting term, so
+             // dividing it back out recovers that term, and quantizing it there
+             // leaves albedo exactly intact — every palette entry survives, and
+             // the steps land on the shading where the eye expects a cel
+             // boundary. This is what toon shading is; the frame filter was
+             // only ever an impression of it.
+             //
+             // Approximate in that outgoingLight also carries specular and
+             // emissive. At the metalness 0, roughness 1 these cities use, that
+             // is a small share of a mostly diffuse surface.
+             vec3 albedo = max( diffuseColor.rgb, vec3( 1e-3 ) );
+             float lit = dot( outgoingLight / albedo, vec3( 0.2126, 0.7152, 0.0722 ) );
              // Band centres, not edges: floor(x*n+0.5)/n makes the lowest band
-             // exactly 0, and that crushed most of the city to pure black.
-             //
-             // Per channel rather than by luminance: rescaling a colour to a
-             // quantized luminance divides by that luminance, so any channel
-             // above the average clips, and a palette of muted greys and sands
-             // came out saturated blue and orange.
-             disp = ( floor( disp * uBands ) + 0.5 ) / uBands;
-             gl_FragColor.rgb = pow( disp, vec3( 2.2 ) );
-           }`,
+             // exactly 0, so every surface below it goes pure black — which
+             // swallowed most of the city on the first attempt.
+             float q = ( floor( lit * uBands ) + 0.5 ) / uBands;
+             outgoingLight = albedo * q;
+           }
+           #include <opaque_fragment>`,
         );
     };
 
