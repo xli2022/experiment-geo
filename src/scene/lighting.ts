@@ -11,6 +11,18 @@ export interface SkyOptions {
   shadowRadius?: number;
   /** Shadow map resolution. */
   shadowMapSize?: number;
+  /**
+   * Hemisphere fill. What lifts surfaces the sun does not reach.
+   *
+   * Nothing in a real city is lit only by the sun — the sky is a light source
+   * covering half the view, and a street between two towers sees almost
+   * nothing else.
+   */
+  ambientIntensity?: number;
+  /** Sun intensity. Sets how far the lit faces sit above the fill. */
+  sunIntensity?: number;
+  /** Weight of the sky/ground gradient environment on PBR surfaces. */
+  environmentIntensity?: number;
 }
 
 export interface SceneLighting {
@@ -30,14 +42,22 @@ const tmpLightInverse = new THREE.Matrix4();
 const ORIGIN = new THREE.Vector3();
 
 /**
- * Lighting and atmosphere for flat-shaded low-poly geometry.
+ * Lighting and atmosphere for a photo-textured, optionally stylized city.
  *
- * The balance is deliberately sun-dominant. Ambient light is what flattens
- * faceted geometry: under a strong hemisphere term every face of a box
- * receives nearly the same amount of light and the form disappears, which is
- * much of why untextured buildings read as coloured cubes. A directional key
- * with modest fill does the opposite — each face of the same box lands on a
- * different value, and the shape reads with no texture at all.
+ * The balance is sun-dominant but no longer sun-only. It began much harsher,
+ * because ambient light is what flattens *faceted untextured* geometry: under a
+ * strong hemisphere term every face of a box receives nearly the same amount of
+ * light and the form disappears, which is much of why untextured buildings read
+ * as coloured cubes. A directional key with almost no fill does the opposite —
+ * each face lands on a different value and the shape reads with no texture.
+ *
+ * That argument does not survive the styled modes. src/style/stylize.ts
+ * quantizes the lighting term into bands, so faces separate by which band they
+ * land in rather than by how dark the fill leaves them, and form no longer
+ * depends on starving the shadows. What starving them did instead was floor
+ * every shaded surface at an eighth of its albedo, which between two towers
+ * reads as unlit. So the fill now carries a real share — which is also nearer
+ * to how a city is lit, the sky being a source that covers half the view.
  */
 export function setupLighting(
   scene: THREE.Scene,
@@ -49,17 +69,34 @@ export function setupLighting(
   const fogFar = options.fogFar ?? 12_000;
   const shadowRadius = options.shadowRadius ?? 420;
   const mapSize = options.shadowMapSize ?? 2048;
+  // Raised from 0.55 / 0.35, and the reasoning below them changed with it.
+  //
+  // The low fill was chosen for untextured flat-shaded boxes, where ambient
+  // light genuinely is the enemy: it lands the same value on every face and the
+  // form disappears. That is no longer the situation. The styled modes quantize
+  // the lighting term into bands, so faces separate by which band they fall in
+  // rather than by how dark the fill leaves them — and the darkest band is a
+  // floor of 1/2n, which at four bands puts every shadowed surface at an eighth
+  // of its albedo. Between two towers that reads as unlit rather than shaded.
+  //
+  // Fill can now carry a real share of the light without flattening anything,
+  // which is also closer to how a city is actually lit: the sky is a source
+  // covering half the view, and most of a street never sees the sun.
+  const ambientIntensity = options.ambientIntensity ?? 1.05;
+  const sunIntensity = options.sunIntensity ?? 2.6;
+  const environmentIntensity = options.environmentIntensity ?? 0.7;
 
   scene.background = skyColor;
   // Linear fog over a wide band hides the hard edge of the baked area, which
   // is doing real work here rather than being decoration.
   scene.fog = new THREE.Fog(skyColor, fogFar * 0.15, fogFar);
 
-  // Fill, not key. Enough to keep shadowed faces off black, and no more.
-  const hemi = new THREE.HemisphereLight(skyColor, groundColor, 0.55);
+  // Skylight. Still fill rather than key — the sun stays well above it — but
+  // enough of it that a shaded facade reads as shaded and not as switched off.
+  const hemi = new THREE.HemisphereLight(skyColor, groundColor, ambientIntensity);
   scene.add(hemi);
 
-  const sun = new THREE.DirectionalLight(0xfff2e0, 2.9);
+  const sun = new THREE.DirectionalLight(0xfff2e0, sunIntensity);
   sun.position.copy(SUN_DIRECTION).multiplyScalar(1000);
   sun.castShadow = true;
   sun.shadow.mapSize.set(mapSize, mapSize);
@@ -80,9 +117,9 @@ export function setupLighting(
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   scene.environment = buildGradientEnvironment(renderer, skyColor, groundColor);
-  // Low. The environment map is here to tint shadowed surfaces with skylight,
-  // not to light the scene — that is the sun's job now.
-  scene.environmentIntensity = 0.35;
+  // Tints shadowed surfaces with skylight and now contributes a real share of
+  // their brightness, rather than only their hue.
+  scene.environmentIntensity = environmentIntensity;
 
   return {
     sun,
