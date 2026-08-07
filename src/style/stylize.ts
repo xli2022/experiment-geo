@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { seedByComponent } from './components';
-import { BACKDROP_PALETTE, CITY_PALETTE, type StyleProfile } from './profiles';
+import { BACKDROP_PALETTE, CITY_PALETTE, DETAIL_LOD, type StyleProfile } from './profiles';
 
 export type StyleKind = 'building' | 'backdrop';
 
@@ -46,6 +46,8 @@ export function stylize(mesh: THREE.Mesh, profile: StyleProfile, kind: StyleKind
       shader.uniforms.uPaletteMix = { value: profile.paletteMix };
       shader.uniforms.uDesaturate = { value: profile.desaturate };
       shader.uniforms.uBands = { value: profile.bands };
+      shader.uniforms.uDetail = { value: profile.detail };
+      shader.uniforms.uSigns = { value: profile.signs };
 
       shader.vertexShader = shader.vertexShader
         .replace(
@@ -67,6 +69,8 @@ export function stylize(mesh: THREE.Mesh, profile: StyleProfile, kind: StyleKind
            uniform float uPaletteMix;
            uniform float uDesaturate;
            uniform float uBands;
+           uniform float uDetail;
+           uniform float uSigns;
            varying vec3 vStyleColor;`,
         )
         .replace(
@@ -84,7 +88,39 @@ export function stylize(mesh: THREE.Mesh, profile: StyleProfile, kind: StyleKind
              // lighting term supplies the massing, so the albedo can be nearly
              // flat, which is the whole point of a palette.
              vec3 tinted = vStyleColor * ( 0.88 + 0.24 * lum );
-             diffuseColor.rgb = mix( base, tinted, uPaletteMix );
+             vec3 styled = mix( base, tinted, uPaletteMix );
+
+             #ifdef USE_MAP
+             if ( uDetail > 0.0 || uSigns > 0.0 ) {
+               // Put the windows back without putting the photograph back.
+               //
+               // A facade's texture is two signals at once: what colour the
+               // building is, and where its openings are. The palette should
+               // replace the first and keep the second, and they separate by
+               // frequency — subtracting a blur of the texture from the texture
+               // leaves the window grid, the door, the balcony edge, and
+               // discards the concrete's colour and the sun's gradient across
+               // it. A high mip is a blur the GPU already has.
+               vec3 local = textureLod( map, vMapUv, ${DETAIL_LOD.toFixed(1)} ).rgb;
+               float d = dot( diffuseColor.rgb - local, vec3( 0.2126, 0.7152, 0.0722 ) );
+               // Asymmetric clamp: a window is much darker than its wall, and
+               // nothing on a facade is three times brighter than one.
+               styled *= 1.0 + clamp( d * uDetail, -0.88, 1.2 );
+
+               // Shinjuku is largely signage, and it is the one thing no
+               // procedural rule reproduces — these are real shopfronts in
+               // their real places. Saturation is what identifies them:
+               // concrete, tile and glass sit near neutral, a sign almost never
+               // does. So saturation decides what survives the palette rather
+               // than a hand-drawn mask.
+               float mx = max( diffuseColor.r, max( diffuseColor.g, diffuseColor.b ) );
+               float mn = min( diffuseColor.r, min( diffuseColor.g, diffuseColor.b ) );
+               float sat = mx - mn;
+               styled = mix( styled, diffuseColor.rgb, smoothstep( 0.14, 0.34, sat ) * uSigns );
+             }
+             #endif
+
+             diffuseColor.rgb = styled;
            }`,
         )
         .replace(

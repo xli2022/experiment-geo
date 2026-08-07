@@ -38,32 +38,80 @@ import * as THREE from 'three';
  * Colour cannot be quantized and stay itself. Light can, so stylize.ts bands
  * the lighting term and leaves albedo untouched.
  */
-export type StyleId = 'source' | 'graded' | 'toon' | 'palette';
+export type StyleId = 'source' | 'graded' | 'toon' | 'palette' | 'city';
 
 export interface StyleProfile {
   readonly id: StyleId;
   readonly label: string;
-  /** Posterize the final image into this many luminance bands. 0 = off. */
+  /** Quantize the lighting term into this many bands. 0 = off. */
   readonly bands: number;
   /** How far to pull the photograph toward its palette colour, 0..1. */
   readonly paletteMix: number;
   /** How far to desaturate the photograph before mixing, 0..1. */
   readonly desaturate: number;
+  /**
+   * How strongly the photograph's fine detail modulates the flat colour.
+   *
+   * This is what puts windows back. The palette throws away everything the
+   * texture said, and windows are most of what it said — but they are also the
+   * *high-frequency* part of it, separable from the building's overall colour,
+   * which is the part worth discarding.
+   */
+  readonly detail: number;
+  /**
+   * How much saturated signage survives the palette, 0..1.
+   *
+   * Shinjuku is largely signs, and they are the one part of the photograph
+   * nothing procedural reproduces — they carry real shopfronts in real places.
+   * Saturation is what distinguishes them: concrete, tile and glass are nearly
+   * neutral, and a sign almost never is.
+   */
+  readonly signs: number;
 }
+
+/**
+ * Mip level standing in for a local average.
+ *
+ * Subtracting a blur is how detail is separated from base colour, and a high
+ * mip *is* a blur the GPU already built — no second pass, no extra texture,
+ * and it scales with the texture's own resolution rather than a pixel radius
+ * guessed in advance.
+ */
+const DETAIL_LOD = 4.0;
+export { DETAIL_LOD };
 
 export const STYLES: Record<StyleId, StyleProfile> = {
   // The control. Every comparison is meaningless without it.
-  source: { id: 'source', label: 'Source (photo LOD2)', bands: 0, paletteMix: 0, desaturate: 0 },
+  source: {
+    id: 'source', label: 'Source (photo LOD2)',
+    bands: 0, paletteMix: 0, desaturate: 0, detail: 0, signs: 0,
+  },
   // Keep the photograph, calm it down, tint toward the city palette. The
   // cheapest rung, and the one that keeps the most of what PLATEAU surveyed.
-  graded: { id: 'graded', label: 'Graded photo', bands: 0, paletteMix: 0.45, desaturate: 0.55 },
-  // Same, plus posterized light. This is the rung where it starts to read as
-  // drawn rather than photographed.
-  toon: { id: 'toon', label: 'Graded + toon bands', bands: 4, paletteMix: 0.45, desaturate: 0.55 },
-  // Discard the photograph entirely: flat palette colour per building, banded
-  // light. The roadmap's stated target, and the most expensive to be wrong
-  // about, because it throws away the texture work the dataset came with.
-  palette: { id: 'palette', label: 'Flat palette per building', bands: 4, paletteMix: 1, desaturate: 1 },
+  graded: {
+    id: 'graded', label: 'Graded photo',
+    bands: 0, paletteMix: 0.45, desaturate: 0.55, detail: 0, signs: 0,
+  },
+  // Same, plus quantized light. Where it starts to read as drawn.
+  toon: {
+    id: 'toon', label: 'Graded + toon light',
+    bands: 4, paletteMix: 0.45, desaturate: 0.55, detail: 0, signs: 0,
+  },
+  // Flat palette colour per building, banded light, nothing of the photograph
+  // left. Kept as the reference for what the palette alone does.
+  palette: {
+    id: 'palette', label: 'Flat palette per building',
+    bands: 4, paletteMix: 1, desaturate: 1, detail: 0, signs: 0,
+  },
+  // The same palette with the photograph's *structure* let back in: window
+  // grids and door openings from its high frequencies, shopfronts from its
+  // saturated regions. Flat where the building is flat, detailed where it is
+  // not — which is what separates a stylized city from a set of coloured
+  // boxes, and is the rung the roadmap describes as the production look.
+  city: {
+    id: 'city', label: 'Palette + windows and signs',
+    bands: 4, paletteMix: 1, desaturate: 1, detail: 1.6, signs: 0.75,
+  },
 };
 
 export const DEFAULT_STYLE: StyleId = 'source';
