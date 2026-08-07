@@ -65,6 +65,36 @@ def tile_bounds(x: int, y: int, z: int) -> tuple[float, float, float, float]:
     return (x / n * 360.0 - 180.0, lat_at(y + 1), (x + 1) / n * 360.0 - 180.0, lat_at(y))
 
 
+def geoid_height(lat: float, lon: float) -> float | None:
+    """Metres from the geoid up to the WGS84 ellipsoid at this point.
+
+    This is the difference that makes buildings float, and it is large: 37.08 m
+    at Shinjuku. GSI reports terrain as height above mean sea level — above the
+    *geoid* — while a 3D globe draws the world on the *ellipsoid*, and PLATEAU
+    publishes its buildings against the ellipsoid too. Mixing the two puts the
+    ground 37 m below the city standing on it.
+
+    PLATEAU View never shows this because it pairs the buildings with terrain in
+    the same datum; the mistake is only available to someone assembling the two
+    sources themselves.
+
+    Queried rather than hard-coded because it varies by tens of metres across
+    the world, and by a metre or so across a city — small enough that one
+    reading at the centre covers a city-sized field.
+    """
+    url = (
+        "https://vldb.gsi.go.jp/sokuchi/surveycalc/geoid/calcgh/cgi/geoidcalc.pl"
+        f"?outputType=json&latitude={lat:.6f}&longitude={lon:.6f}"
+    )
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=60) as fh:
+            data = json.loads(fh.read().decode())
+        return float(data["OutputData"]["geoidHeight"])
+    except (urllib.error.URLError, TimeoutError, KeyError, ValueError) as exc:
+        print(f"warning: geoid lookup failed ({exc}); heights stay orthometric", file=sys.stderr)
+        return None
+
+
 def fetch_tile(source: str, z: int, x: int, y: int) -> list[list[float]] | None:
     url = f"https://cyberjapandata.gsi.go.jp/xyz/{source}/{z}/{x}/{y}.txt"
     try:
@@ -91,6 +121,12 @@ def main() -> int:
     ap.add_argument("--radius", type=float, default=2400.0, help="metres")
     ap.add_argument("--zoom", type=int, default=15)
     ap.add_argument("--source", default="dem5a", help="dem5a (5 m) or dem (10 m)")
+    ap.add_argument(
+        "--no-geoid",
+        action="store_true",
+        help="leave heights as orthometric. Only useful for comparing against "
+        "the raw survey; a 3D globe wants ellipsoidal.",
+    )
     ap.add_argument(
         "--resolution",
         type=int,
@@ -166,11 +202,24 @@ def main() -> int:
             ]
             if near:
                 heights[i] = sum(near) / len(near)
-    heights = [fallback if math.isnan(h) else round(h, 2) for h in heights]
+    heights = [fallback if math.isnan(h) else h for h in heights]
+
+    # Convert to ellipsoidal height, which is the datum the globe and the
+    # building tilesets both use. Without this the whole field sits a geoid
+    # undulation too low — 37 m in Tokyo — and every building floats.
+    geoid = None if args.no_geoid else geoid_height(args.lat, args.lon)
+    if geoid is not None:
+        heights = [h + geoid for h in heights]
+        print(f"geoid undulation {geoid:.2f} m applied — heights are ellipsoidal")
+    heights = [round(h, 2) for h in heights]
 
     doc = {
         "attribution": "国土地理院 (GSI Japan)",
         "source": f"{args.source} z{args.zoom}",
+        # Which vertical datum `heights` are in. Ellipsoidal is what a 3D globe
+        # and PLATEAU's tilesets use; orthometric is what the DEM shipped.
+        "datum": "ellipsoidal" if geoid is not None else "orthometric",
+        "geoidUndulation": geoid,
         # Geographic bounds of the grid. Row 0 is the north edge.
         "north": north,
         "south": south,
@@ -184,7 +233,7 @@ def main() -> int:
         json.dump(doc, fh, separators=(",", ":"))
     print(
         f"{res}x{res} samples ({known} from survey, {res * res - known} filled) "
-        f"-> {args.out}, elevation {min(heights):.1f}..{max(heights):.1f} m"
+        f"-> {args.out}, {doc['datum']} height {min(heights):.1f}..{max(heights):.1f} m"
     )
     return 0
 

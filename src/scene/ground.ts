@@ -41,33 +41,38 @@ export interface GroundOptions {
    * hard line against the sky.
    */
   extent?: number;
-  /** Where the world origin sits, so the field can be placed against it. */
-  anchor?: { lat: number; lon: number };
   /**
-   * Metres to add to every surveyed elevation.
+   * Where the world origin sits, so the field can be placed against it.
    *
-   * GSI reports height above sea level; the world's Y is measured from the
-   * anchor. The two differ by a constant — the anchor's own ground level plus
-   * whatever datum offset the tileset's placement carries — and one number
-   * absorbs both. Measured against where PLATEAU actually puts its buildings
-   * rather than derived, because the tileset's own bounding volumes disagree
-   * with its geometry by over a hundred metres.
+   * `height` is the ellipsoidal height that maps to y = 0, and the field is
+   * measured from the same ellipsoid — tools/fetch-dem.py adds the geoid
+   * undulation for exactly this reason — so the surface simply subtracts it.
+   * Two datums were the whole bug: GSI reports height above mean sea level and
+   * the globe draws the ellipsoid, which at Shinjuku differ by 37.08 m, and
+   * mixing them put the ground below the city standing on it.
    */
-  elevationOffset?: number;
+  anchor?: { lat: number; lon: number; height?: number };
 }
+// There is deliberately no vertical fudge factor here. There was one, and a
+// -55 m value in it hid the datum mistake above for as long as it existed: the
+// city looked roughly seated, so nothing pointed at the 37 m the two datums
+// actually disagreed by. If a city sits wrong, the number to change is its
+// anchor height or its terrain, both of which mean something.
 
 export class Ground {
   private mesh: THREE.Mesh;
   private geometry: THREE.BufferGeometry;
   private readonly material: THREE.MeshStandardMaterial;
   private scene: THREE.Scene | null = null;
-  private readonly anchor: { lat: number; lon: number } | null;
+  private readonly anchor: { lat: number; lon: number; height?: number } | null;
   private readonly offset: number;
 
   constructor(options: GroundOptions = {}) {
-    const { color = '#8d9285', extent = 13_000, anchor, elevationOffset = 0 } = options;
+    const { color = '#8d9285', extent = 13_000, anchor } = options;
     this.anchor = anchor ?? null;
-    this.offset = elevationOffset;
+    // y = 0 is the anchor's ellipsoidal height, and the field is ellipsoidal,
+    // so placing it is a subtraction and nothing more.
+    this.offset = -(anchor?.height ?? 0);
 
     this.geometry = new THREE.PlaneGeometry(extent * 2, extent * 2);
     this.material = new THREE.MeshStandardMaterial({

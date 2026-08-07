@@ -212,6 +212,20 @@ export class TilesetSource implements WorldSource {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
 
+      // A note for anything that later asks where this geometry is: measure it
+      // with vertices, not with its bounding box.
+      //
+      // Tile geometry arrives in ECEF-aligned axes, so no local axis is up —
+      // at Tokyo, world-up is local (-0.62, 0.58, -0.53). A tile's 800 m of
+      // horizontal spread therefore lives in all three local axes at once, and
+      // `Box3.setFromObject` transforms the box's eight corners rather than the
+      // points inside it, which turns that into ~1,700 m of apparent height.
+      // Measured: the declared bounds are exactly tight in local space (volume
+      // ratio 1.00 across every mesh), so there is nothing to correct here —
+      // `setFromObject(object, true)` is the fix at the call site. Three
+      // attempts at seating this city were thrown off by the loose form, one of
+      // them reporting buildings 875 m underground that are 22 m underground.
+
       const pbr = this.opts.material;
       if (pbr) {
         for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {

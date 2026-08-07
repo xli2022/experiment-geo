@@ -74,7 +74,6 @@ export interface City {
     extent?: number;
     /** Height field under `<city>/`, from tools/fetch-dem.py. */
     terrain?: string;
-    elevationOffset?: number;
   };
   /**
    * PBR overrides applied to every material as tiles load.
@@ -134,22 +133,29 @@ const TOKYO_SHINJUKU: City = {
     { dir: 'veg-trees', errorTarget: 32 },
   ],
   // Height matters here in a way it does not for Berlin, whose bake carries
-  // its own ground. PLATEAU places buildings at their true elevation, so
-  // without this the city hangs above the ground sheet.
+  // its own ground. PLATEAU places buildings at their true elevation, so this
+  // is what decides where "ground level" ends up on screen.
   //
-  // Measured from the loaded geometry rather than taken from the tileset's
-  // bounding-volume regions, which claim the lowest base sits at 53 m and do
-  // not agree with where the meshes actually are: anchored at 53 the median
-  // building base came out 147 m *below* the sheet. The anchor is whatever
-  // puts that median at zero.
-  anchor: { lat: 35.6898, lon: 139.696, height: -94 },
+  // Derived, not fitted: GSI's survey reads 40.9 m above sea level at this
+  // point and the geoid sits 37.08 m below the ellipsoid here, so the ground
+  // is at ellipsoidal height 78. Buildings and terrain are both measured from
+  // the ellipsoid, so putting the anchor there puts the street at y = 0.
+  //
+  // Note that this number cancels out of the building-to-ground relationship
+  // entirely — it shifts the tileset and the terrain by the same amount — so
+  // it controls where the city sits relative to the *camera*, and nothing else.
+  // An earlier -94 here was fitted to a bad measurement and was silently
+  // paired with a -55 m fudge on the ground to cancel a datum mistake.
+  // Measured after the fix: the median cell of building geometry sits 0.5 m
+  // below the terrain under it, against 92 m above it before.
+  anchor: { lat: 35.6898, lon: 139.696, height: 78 },
   attribution: PLATEAU_CREDIT,
   material: { metalness: 0, roughness: 1 },
   // PLATEAU has no relief for Shinjuku — no `dem` package in its catalogue at
   // all — so the ground comes from GSI's survey instead. It puts this area
   // between 4.5 and 43.9 m, which is why a flat sheet could never sit right
   // under it whatever height the sheet took.
-  ground: { color: '#8a8f83', extent: 13_000, terrain: 'terrain.json', elevationOffset: -55 },
+  ground: { color: '#8a8f83', extent: 13_000, terrain: 'terrain.json' },
 };
 
 // Typed as non-empty so DEFAULT_CITY does not need a runtime check for a case
