@@ -48,6 +48,7 @@ export function stylize(mesh: THREE.Mesh, profile: StyleProfile, kind: StyleKind
       shader.uniforms.uBands = { value: profile.bands };
       shader.uniforms.uDetail = { value: profile.detail };
       shader.uniforms.uSigns = { value: profile.signs };
+      shader.uniforms.uDebug = { value: profile.id === 'debug' ? 1 : 0 };
 
       shader.vertexShader = shader.vertexShader
         .replace(
@@ -71,11 +72,16 @@ export function stylize(mesh: THREE.Mesh, profile: StyleProfile, kind: StyleKind
            uniform float uBands;
            uniform float uDetail;
            uniform float uSigns;
+           uniform float uDebug;
            varying vec3 vStyleColor;`,
         )
         .replace(
           '#include <map_fragment>',
           `#include <map_fragment>
+           // Declared out here so the banding below can see it: a window is a
+           // hole, not dark paint, and it should land in a darker light band
+           // rather than only a darker colour.
+           float styleDetail = 0.0;
            if ( uPaletteMix > 0.0 ) {
              float lum = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
              // Desaturate toward the photograph's own luminance first, so the
@@ -127,25 +133,45 @@ export function stylize(mesh: THREE.Mesh, profile: StyleProfile, kind: StyleKind
                // strong detail does not run away — most facades carry far less
                // contrast than the few that carry a lot.
                float gain = sign( rel ) * pow( min( abs( rel ), 4.0 ), 0.7 ) * uDetail;
-               // Asymmetric: a window is much darker than its wall, and nothing
-               // on a facade is twice as bright as one.
-               styled *= clamp( 1.0 + gain, 0.12, 2.0 );
+               styleDetail = gain;
+               // Only half of it goes into albedo. The rest drives the lighting
+               // term below, where the quantizer turns it into a step instead
+               // of a shade — which is what makes a window read at all in a
+               // banded image. Applying the whole thing here as well would
+               // double it and crush the openings to black.
+               styled *= clamp( 1.0 + gain * 0.5, 0.2, 1.8 );
 
                // Shinjuku is largely signage, and it is the one thing no
                // procedural rule reproduces — real shopfronts in real places.
                // Saturation identifies them without a mask: concrete, tile and
                // glass sit near neutral, a sign almost never does.
                //
-               // Relative saturation for the same reason as above. Absolute
-               // max-minus-min scales with brightness, so a deep red sign in
-               // shadow scored below a pale beige wall in sun and was dropped.
-               float mx = max( diffuseColor.r, max( diffuseColor.g, diffuseColor.b ) );
-               float mn = min( diffuseColor.r, min( diffuseColor.g, diffuseColor.b ) );
+               // Measured in a perceptual space, which is the whole difference
+               // between this selecting signage and selecting everything.
+               //
+               // Linear RGB pulls channel ratios apart in the dark end, so
+               // ordinary warm materials score as though they were saturated:
+               // measured, beige tile reads 0.337 and a warm grey wall 0.320,
+               // against a red sign's 0.944 — all three above any threshold
+               // that catches the sign. The mask fired on nearly every pixel in
+               // the city, which is indistinguishable from it never firing,
+               // because blending the photograph back everywhere is just the
+               // photograph. Gamma-corrected, the same samples read 0.171 and
+               // 0.190 against 0.800, and one threshold separates them.
+               vec3 perceptual = pow( max( diffuseColor.rgb, vec3( 0.0 ) ), vec3( 1.0 / 2.2 ) );
+               float mx = max( perceptual.r, max( perceptual.g, perceptual.b ) );
+               float mn = min( perceptual.r, min( perceptual.g, perceptual.b ) );
+               // Relative, so a sign in shadow still counts as a sign.
                float sat = ( mx - mn ) / ( mx + 0.02 );
                // Lifted slightly on the way through: signage is lit from
                // itself as much as from the sun, and the toon banding below
                // would otherwise fold it into the wall's band.
-               styled = mix( styled, diffuseColor.rgb * 1.3, smoothstep( 0.22, 0.46, sat ) * uSigns );
+               // Above where painted masonry tops out and below where signage
+               // starts, per the measurements above.
+               float signMask = smoothstep( 0.35, 0.60, sat );
+               styled = mix( styled, diffuseColor.rgb * 1.3, signMask * uSigns );
+
+               if ( uDebug > 0.5 ) styled = vec3( signMask, abs( gain ), 0.25 );
              }
              #endif
 
@@ -178,6 +204,11 @@ export function stylize(mesh: THREE.Mesh, profile: StyleProfile, kind: StyleKind
              // is a small share of a mostly diffuse surface.
              vec3 albedo = max( diffuseColor.rgb, vec3( 1e-3 ) );
              float lit = dot( outgoingLight / albedo, vec3( 0.2126, 0.7152, 0.0722 ) );
+             // Push the facade's own detail through the quantizer, so a window
+             // crosses into the band below its wall and comes out as an edge
+             // rather than a smudge. Modulating albedo alone left the openings
+             // visible only as a slightly darker shade of the same band.
+             lit *= clamp( 1.0 + styleDetail, 0.15, 1.8 );
              // Band centres, not edges: floor(x*n+0.5)/n makes the lowest band
              // exactly 0, so every surface below it goes pure black — which
              // swallowed most of the city on the first attempt.

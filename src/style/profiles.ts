@@ -38,7 +38,7 @@ import * as THREE from 'three';
  * Colour cannot be quantized and stay itself. Light can, so stylize.ts bands
  * the lighting term and leaves albedo untouched.
  */
-export type StyleId = 'source' | 'graded' | 'toon' | 'palette' | 'city';
+export type StyleId = 'source' | 'graded' | 'toon' | 'palette' | 'city' | 'debug';
 
 export interface StyleProfile {
   readonly id: StyleId;
@@ -117,6 +117,15 @@ export const STYLES: Record<StyleId, StyleProfile> = {
   city: {
     id: 'city', label: 'Palette + windows and signs',
     bands: 4, paletteMix: 1, desaturate: 1, detail: 0.9, signs: 0.8,
+  },
+  // Shows the two masks directly instead of their effect, because "I cannot see
+  // the signs" has two very different causes and they need separating: the mask
+  // never firing, or firing and then being washed out downstream. Red is the
+  // sign mask, green the detail magnitude, blue marks a textured surface.
+  // Black where a surface has a texture means the signals are simply not there.
+  debug: {
+    id: 'debug', label: 'Debug: feature masks',
+    bands: 0, paletteMix: 1, desaturate: 1, detail: 0.9, signs: 0.8,
   },
 };
 
