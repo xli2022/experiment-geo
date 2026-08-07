@@ -23,9 +23,10 @@ import * as THREE from 'three';
  * enough to judge a look, not good enough to ship.
  */
 export function seedByComponent(
-  geometry: THREE.BufferGeometry,
+  mesh: THREE.Mesh,
   palette: readonly THREE.Color[],
 ): number {
+  const geometry = mesh.geometry;
   const pos = geometry.getAttribute('position');
   const n = pos.count;
   if (!n) return 0;
@@ -93,8 +94,10 @@ export function seedByComponent(
   // which is not portable GLSL.
   const label = new Map<number, number>();
   const colors = new Float32Array(n * 3);
+  const roots = new Int32Array(n);
   for (let i = 0; i < n; i++) {
     const r = find(i);
+    roots[i] = r;
     let id = label.get(r);
     if (id === undefined) {
       id = label.size;
@@ -108,6 +111,35 @@ export function seedByComponent(
     colors[i * 3 + 2] = c.b;
   }
   geometry.setAttribute('aStyleColor', new THREE.BufferAttribute(colors, 3));
+
+  // Where each building meets the ground, and how much of it there is.
+  //
+  // A procedural facade needs to know where floor one starts, and that is a
+  // per-building fact a shader cannot derive: a fragment knows its own height
+  // but not the height of the building it belongs to. Since the components are
+  // already in hand, their extent along world up is nearly free — and it has to
+  // be *world* up, because tile geometry sits in ECEF-aligned axes where no
+  // local axis points up.
+  mesh.updateWorldMatrix(true, false);
+  const v = new THREE.Vector3();
+  const lo = new Map<number, number>();
+  const hi = new Map<number, number>();
+  for (let i = 0; i < n; i++) {
+    v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+    const r = roots[i]!;
+    const l = lo.get(r);
+    if (l === undefined || v.y < l) lo.set(r, v.y);
+    const h = hi.get(r);
+    if (h === undefined || v.y > h) hi.set(r, v.y);
+  }
+  const spans = new Float32Array(n * 2);
+  for (let i = 0; i < n; i++) {
+    const r = roots[i]!;
+    spans[i * 2] = lo.get(r)!;
+    spans[i * 2 + 1] = hi.get(r)! - lo.get(r)!;
+  }
+  geometry.setAttribute('aBuildingSpan', new THREE.BufferAttribute(spans, 2));
+
   return label.size;
 }
 

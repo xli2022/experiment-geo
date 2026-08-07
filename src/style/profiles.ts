@@ -38,7 +38,7 @@ import * as THREE from 'three';
  * Colour cannot be quantized and stay itself. Light can, so stylize.ts bands
  * the lighting term and leaves albedo untouched.
  */
-export type StyleId = 'source' | 'graded' | 'toon' | 'palette' | 'city' | 'debug';
+export type StyleId = 'source' | 'graded' | 'toon' | 'palette' | 'city' | 'game' | 'debug';
 
 export interface StyleProfile {
   readonly id: StyleId;
@@ -67,6 +67,18 @@ export interface StyleProfile {
    * neutral, and a sign almost never is.
    */
   readonly signs: number;
+  /**
+   * Strength of the generated window grid, 0..1.
+   *
+   * Generated rather than recovered because the source cannot support the
+   * alternative at close range: PLATEAU's facade textures come from aerial
+   * photogrammetry, so vertical surfaces are captured at grazing angles, soft
+   * before ETC1S compression blocks them further. A grid built from the
+   * building's own dimensions has no resolution to run out of, covers the
+   * buildings that carry no texture at all, and — unlike a photographed window
+   * — can be lit at night.
+   */
+  readonly windows: number;
 }
 
 /**
@@ -90,24 +102,24 @@ export const STYLES: Record<StyleId, StyleProfile> = {
   // The control. Every comparison is meaningless without it.
   source: {
     id: 'source', label: 'Source (photo LOD2)',
-    bands: 0, paletteMix: 0, desaturate: 0, detail: 0, signs: 0,
+    bands: 0, paletteMix: 0, desaturate: 0, detail: 0, signs: 0, windows: 0,
   },
   // Keep the photograph, calm it down, tint toward the city palette. The
   // cheapest rung, and the one that keeps the most of what PLATEAU surveyed.
   graded: {
     id: 'graded', label: 'Graded photo',
-    bands: 0, paletteMix: 0.45, desaturate: 0.55, detail: 0, signs: 0,
+    bands: 0, paletteMix: 0.45, desaturate: 0.55, detail: 0, signs: 0, windows: 0,
   },
   // Same, plus quantized light. Where it starts to read as drawn.
   toon: {
     id: 'toon', label: 'Graded + toon light',
-    bands: 4, paletteMix: 0.45, desaturate: 0.55, detail: 0, signs: 0,
+    bands: 4, paletteMix: 0.45, desaturate: 0.55, detail: 0, signs: 0, windows: 0,
   },
   // Flat palette colour per building, banded light, nothing of the photograph
   // left. Kept as the reference for what the palette alone does.
   palette: {
     id: 'palette', label: 'Flat palette per building',
-    bands: 4, paletteMix: 1, desaturate: 1, detail: 0, signs: 0,
+    bands: 4, paletteMix: 1, desaturate: 1, detail: 0, signs: 0, windows: 0,
   },
   // The same palette with the photograph's *structure* let back in: window
   // grids and door openings from its high frequencies, shopfronts from its
@@ -116,7 +128,16 @@ export const STYLES: Record<StyleId, StyleProfile> = {
   // boxes, and is the rung the roadmap describes as the production look.
   city: {
     id: 'city', label: 'Palette + windows and signs',
-    bands: 4, paletteMix: 1, desaturate: 1, detail: 0.9, signs: 0.8,
+    bands: 4, paletteMix: 1, desaturate: 1, detail: 0.9, signs: 0.8, windows: 0,
+  },
+  // Windows generated from each building's own dimensions instead of recovered
+  // from its photograph, plus signage still taken from the texture because it
+  // carries information nothing can invent. The production candidate: crisp at
+  // any range, present on the buildings that have no texture at all, and the
+  // only version that could ever be lit at night.
+  game: {
+    id: 'game', label: 'Palette + procedural windows',
+    bands: 4, paletteMix: 1, desaturate: 1, detail: 0, signs: 0.9, windows: 1,
   },
   // Shows the two masks directly instead of their effect, because "I cannot see
   // the signs" has two very different causes and they need separating: the mask
@@ -125,7 +146,7 @@ export const STYLES: Record<StyleId, StyleProfile> = {
   // Black where a surface has a texture means the signals are simply not there.
   debug: {
     id: 'debug', label: 'Debug: feature masks',
-    bands: 0, paletteMix: 1, desaturate: 1, detail: 0.9, signs: 0.8,
+    bands: 0, paletteMix: 1, desaturate: 1, detail: 0.9, signs: 0.8, windows: 0,
   },
 };
 
