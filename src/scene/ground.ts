@@ -16,13 +16,13 @@ export interface HeightField {
  * The ground under cities whose tileset carries no terrain of its own.
  *
  * Berlin's bake draws its own, because OSM2World renders landuse, water and
- * roads alongside the buildings. PLATEAU publishes buildings, roads and
- * vegetation with no relief at all — its catalogue has no `dem` for Shinjuku —
- * so without this Tokyo is towers hanging in mid-air.
+ * roads alongside the buildings. PLATEAU's tilesets carry no relief — it does
+ * publish a DEM, but only inside the CityGML package, never as 3D Tiles — so
+ * without this Tokyo is towers hanging in mid-air.
  *
- * A flat sheet cannot substitute, and the numbers say why: GSI's survey puts
- * Shinjuku's ground between 4.5 m and 43.9 m. PLATEAU places every building at
- * its true elevation, so against a single plane at the median, 43% of building
+ * A flat sheet cannot substitute, and the numbers say why: the survey puts
+ * Shinjuku's ground across a 40 m range. PLATEAU places every building at its
+ * true elevation, so against a single plane at the median, 43% of building
  * meshes floated more than 10 m — and a 25 m float displaces its shadow by 32 m
  * at this sun angle, which is what makes shadows read as detached from the
  * buildings casting them.
@@ -45,11 +45,12 @@ export interface GroundOptions {
    * Where the world origin sits, so the field can be placed against it.
    *
    * `height` is the ellipsoidal height that maps to y = 0, and the field is
-   * measured from the same ellipsoid — tools/fetch-dem.py adds the geoid
+   * measured from the same ellipsoid — both DEM fetchers add the geoid
    * undulation for exactly this reason — so the surface simply subtracts it.
-   * Two datums were the whole bug: GSI reports height above mean sea level and
-   * the globe draws the ellipsoid, which at Shinjuku differ by 37.08 m, and
-   * mixing them put the ground below the city standing on it.
+   * Two datums were the whole bug: every Japanese elevation source reports
+   * height above mean sea level, PLATEAU's included (its DEM is EPSG:6697),
+   * while the globe draws the ellipsoid. At Shinjuku those differ by 37.08 m,
+   * and mixing them put the ground below the city standing on it.
    */
   anchor?: { lat: number; lon: number; height?: number };
 }

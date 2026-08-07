@@ -79,21 +79,50 @@ const result = await page.evaluate(({ cell }) => {
   const ray = new THREE.Raycaster();
   const down = new THREE.Vector3(0, -1, 0);
   const from = new THREE.Vector3();
-  const residuals = [];
-  let outside = 0;
-  for (const [key, y] of low) {
-    const [cx, cz] = key.split(',').map(Number);
-    from.set((cx + 0.5) * cell, 20000, (cz + 0.5) * cell);
+  const groundAt = (x, z) => {
+    from.set(x, 20000, z);
     ray.set(from, down);
     const hits = ray.intersectObjects(ground, false);
     // Inside the surveyed field the ray passes through both the grid and the
     // flat surround beneath it. One hit means only the surround is there, and
     // comparing against a sheet at the median would be measuring nothing.
-    if (hits.length < 2) {
-      outside++;
-      continue;
+    return hits.length < 2 ? null : Math.max(...hits.map((h) => h.point.y));
+  };
+
+  // One ray per cell and no more. The ground is a 147k-vertex plane with no
+  // BVH, so a ray costs ~30 ms; sampling neighbours with four more rays each
+  // turns a two-minute run into half an hour. The neighbours are cells too, so
+  // their ground heights are already here.
+  const groundOf = new Map();
+  let outside = 0;
+  for (const key of low.keys()) {
+    const [cx, cz] = key.split(',').map(Number);
+    const g = groundAt((cx + 0.5) * cell, (cz + 0.5) * cell);
+    if (g === null) outside++;
+    else groundOf.set(key, g);
+  }
+
+  const residuals = [];
+  const bySlope = {};
+  for (const [key, y] of low) {
+    const g = groundOf.get(key);
+    if (g === undefined) continue;
+    const r = y - g;
+    residuals.push(r);
+
+    // How much the ground moves across a building-sized patch. A flat floor
+    // slab laid on sloping ground is buried at its uphill end by roughly this
+    // much, and that is the difference between geometry that is wrong and
+    // geometry that is right about a city built on hills.
+    const [cx, cz] = key.split(',').map(Number);
+    const around = [`${cx - 1},${cz}`, `${cx + 1},${cz}`, `${cx},${cz - 1}`, `${cx},${cz + 1}`]
+      .map((k) => groundOf.get(k))
+      .filter((v) => v !== undefined);
+    if (around.length === 4) {
+      const relief = Math.max(...around) - Math.min(...around);
+      const b = relief < 1 ? '0-1' : relief < 2 ? '1-2' : relief < 4 ? '2-4' : relief < 8 ? '4-8' : '8+';
+      (bySlope[b] ??= []).push(r);
     }
-    residuals.push(y - Math.max(...hits.map((h) => h.point.y)));
   }
 
   residuals.sort((a, b) => a - b);
@@ -113,6 +142,10 @@ const result = await page.evaluate(({ cell }) => {
     touching: residuals.filter((r) => Math.abs(r) <= 2).length,
     below5: residuals.filter((r) => r < -5).length,
     hist,
+    slope: Object.fromEntries(Object.entries(bySlope).map(([k, v]) => {
+      v.sort((a, b) => a - b);
+      return [k, { n: v.length, p05: v[Math.floor(v.length * 0.05)], p50: v[Math.floor(v.length * 0.5)] }];
+    })),
   };
 }, { cell: CELL });
 
@@ -132,6 +165,12 @@ console.log(`    p01 ${f(result.p01)}   p05 ${f(result.p05)}   p10 ${f(result.p1
   `   p25 ${f(result.p25)}   p50 ${f(result.p50)}   p95 ${f(result.p95)} m`);
 console.log(`    range ${f(result.min)} .. ${f(result.max)} m`);
 console.log(`  ${result.touching} cells within 2 m of the ground, ${result.below5} more than 5 m under it`);
+console.log(`\n  by how much the ground moves across one cell either way:`);
+for (const k of ['0-1', '1-2', '2-4', '4-8', '8+']) {
+  const s = result.slope[k];
+  if (s) console.log(`    relief ${k.padEnd(4)} m: ${String(s.n).padStart(5)} cells, p05 ${f(s.p05).padStart(6)}  p50 ${f(s.p50).padStart(6)} m`);
+}
+
 console.log(`\n  residual histogram (10 m bins):`);
 for (const b of Object.keys(result.hist).map(Number).sort((a, c) => a - c)) {
   const label = b <= -5 ? '  <-50' : b >= 9 ? '   90+' : `${String(b * 10).padStart(4)}..`;

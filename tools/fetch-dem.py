@@ -2,13 +2,26 @@
 """
 Download a terrain height field from Japan's GSI elevation tiles.
 
+Prefer tools/fetch-plateau-dem.py for a PLATEAU city
+----------------------------------------------------
+That one reads PLATEAU's own DEM — the surface its buildings were placed
+against — at ~1.8 m instead of the 25 m this ends up resampling to. Measured
+against each other over Shinjuku the two agree to 1 cm in the median, which is
+a good check on both, but 16% of points differ by more than 2 m and the extremes
+reach 12 m. Use this one for cities PLATEAU does not cover.
+
 Why this exists
 ---------------
-PLATEAU publishes buildings at their true elevation but ships no relief for
-Shinjuku — there is no `dem` package in its catalogue at all. Under a flat
-sheet the city cannot sit right: measured, 43% of building meshes floated more
-than 10 m above it, and a 25 m float displaces its shadow by 32 m, which is
-what makes shadows read as detached from the buildings casting them.
+A city whose tileset carries no terrain cannot sit right under a flat sheet:
+measured on Shinjuku, 43% of building meshes floated more than 10 m above one,
+and a 25 m float displaces its shadow by 32 m, which is what makes shadows read
+as detached from the buildings casting them.
+
+(An earlier version of this note claimed PLATEAU ships no relief for Shinjuku
+and has no `dem` package at all. Half right, and the wrong half mattered: there
+is no `dem` *dataset* — no prefecture has one, so nothing appears in the 3D
+Tiles catalogue — but the CityGML package lists `dem` among its feature types
+and contains it.)
 
 Deriving the surface from the buildings themselves was tried twice and does not
 work. The premise — the lowest geometry in a patch of city is the ground there

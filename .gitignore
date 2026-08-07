@@ -32,3 +32,7 @@ vendor/
 # Python bytecode from the tools/
 __pycache__/
 *.pyc
+
+# Diagnostic harness output (test/_*.mjs) — screenshots and error dumps.
+*-errors.txt
+*.png
