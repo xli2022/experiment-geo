@@ -4,6 +4,8 @@ import { GLTFExtensionsPlugin } from '3d-tiles-renderer/plugins';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import type { WorldSource } from './WorldSource';
+import { stylize, type StyleKind } from '../style/stylize';
+import type { StyleProfile } from '../style/profiles';
 
 export interface TilesetSourceOptions {
   /**
@@ -24,6 +26,14 @@ export interface TilesetSourceOptions {
   anchor?: { lat: number; lon: number; height?: number };
   /** PBR overrides applied to every material as tiles stream in. */
   material?: { metalness?: number; roughness?: number };
+  /**
+   * Candidate visual treatment, applied as tiles load.
+   *
+   * Runtime rather than baked on purpose: the look has to be judged on real
+   * geometry before anything is committed to an asset pipeline, and this way
+   * abandoning a direction costs nothing.
+   */
+  style?: { profile: StyleProfile; kind: StyleKind };
   /** Called once the root tileset is parsed and the world has been placed. */
   onReady?: (info: TilesetInfo) => void;
   onError?: (error: Error) => void;
@@ -235,6 +245,11 @@ export class TilesetSource implements WorldSource {
           if (pbr.roughness !== undefined) std.roughness = pbr.roughness;
         }
       }
+
+      // After the PBR overrides, so a style is layered on the same material
+      // state the unstyled build renders with and the comparison is fair.
+      const style = this.opts.style;
+      if (style) stylize(mesh, style.profile, style.kind);
     });
   };
 }

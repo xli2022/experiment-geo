@@ -8,6 +8,7 @@ import { Hud, formatDistance } from './ui/Hud';
 import { CityPicker } from './ui/CityPicker';
 import { CITIES, cityAsset, cityFromLocation, layerUrl, rememberCity, type City } from './cities';
 import { ERROR_TARGET, START_ALTITUDE } from './config';
+import { styleFromLocation } from './style/profiles';
 
 const viewer = new Viewer(document.body);
 const hud = new Hud();
@@ -20,6 +21,7 @@ const flyCamera = new FlyCamera(viewer.camera, viewer.canvas);
 let worlds: TilesetSource[] = [];
 let ground: Ground | null = null;
 let city = cityFromLocation();
+const style = styleFromLocation();
 
 /**
  * Tear down whatever world is loaded and bring up another.
@@ -64,6 +66,14 @@ function loadCity(next: City): void {
       errorTarget: layer.errorTarget ?? ERROR_TARGET,
       anchor: next.anchor,
       material: next.material,
+      // Read from the URL rather than the city profile while the target is
+      // still being chosen, so the same city can be A/B'd against itself.
+      // Productionising this means moving it into src/cities.ts, per the
+      // roadmap — but not before there is something worth freezing.
+      style: {
+        profile: style,
+        kind: layer.dir === 'bldg' || layer.dir === 'all' ? 'building' : 'backdrop',
+      },
       // Only the first layer drives framing and the overlay. The rest stream in
       // behind it; waiting for all of them would hold a blank screen until the
       // slowest backdrop finished.

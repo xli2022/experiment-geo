@@ -44,7 +44,11 @@ await page.addInitScript(() => {
   };
 });
 
-await page.goto(`http://localhost:4173/experiment-geo/?city=${CITY}`, {
+// V_STYLE picks a candidate visual treatment (see src/style/profiles.ts), so
+// the same camera can be shot under each one and they can be compared rather
+// than described.
+const STYLE = process.env.V_STYLE ? `&style=${process.env.V_STYLE}` : '';
+await page.goto(`http://localhost:4173/experiment-geo/?city=${CITY}${STYLE}`, {
   waitUntil: 'domcontentloaded',
   timeout: 120000,
 });
