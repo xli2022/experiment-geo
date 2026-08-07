@@ -70,15 +70,21 @@ export interface StyleProfile {
 }
 
 /**
- * Mip level standing in for a local average.
+ * How much coarser than the current sampling footprint the "local average" is,
+ * in mip levels. 2.5 is roughly a six-texel blur at whatever scale the surface
+ * is being drawn at.
  *
- * Subtracting a blur is how detail is separated from base colour, and a high
- * mip *is* a blur the GPU already built — no second pass, no extra texture,
- * and it scales with the texture's own resolution rather than a pixel radius
- * guessed in advance.
+ * Relative, not absolute, and that is the whole point. Subtracting a blur is
+ * how detail separates from base colour, and a high mip is a blur the GPU
+ * already built — but a *fixed* mip is a fixed size in texture space, so on a
+ * facade drawn small it blurs across the whole building and the difference
+ * collapses to nothing. Windows faded out with distance and varied building to
+ * building with texture resolution. Offsetting from the derivative-derived
+ * level instead keeps the blur a constant size *on screen*, so a window holds
+ * its contrast wherever it is drawn.
  */
-const DETAIL_LOD = 4.0;
-export { DETAIL_LOD };
+const DETAIL_SPREAD = 2.5;
+export { DETAIL_SPREAD };
 
 export const STYLES: Record<StyleId, StyleProfile> = {
   // The control. Every comparison is meaningless without it.
@@ -110,7 +116,7 @@ export const STYLES: Record<StyleId, StyleProfile> = {
   // boxes, and is the rung the roadmap describes as the production look.
   city: {
     id: 'city', label: 'Palette + windows and signs',
-    bands: 4, paletteMix: 1, desaturate: 1, detail: 1.6, signs: 0.75,
+    bands: 4, paletteMix: 1, desaturate: 1, detail: 0.9, signs: 0.8,
   },
 };
 
